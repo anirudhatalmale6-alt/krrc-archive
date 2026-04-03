@@ -17,11 +17,12 @@ const BASE = process.env.BASE_PATH || '/krrc';
 const AI_API_KEY = process.env.AI_API_KEY || '';
 
 // Security
+app.set('trust proxy', 1);
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
 app.use(express.json({ limit: '1mb' }));
 
-const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 300, message: { error: 'Too many requests' } });
-const uploadLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 20, message: { error: 'Too many uploads, try again later' } });
+const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 300, message: { error: 'Too many requests' }, validate: { xForwardedForHeader: false } });
+const uploadLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 20, message: { error: 'Too many uploads, try again later' }, validate: { xForwardedForHeader: false } });
 
 app.use(BASE + '/api', apiLimiter);
 
