@@ -300,7 +300,7 @@ function handleFileSelect(input) {
         fileList.classList.add('hidden');
         fileInfo.classList.remove('hidden');
         const f = selectedFiles[0];
-        const icon = f.type.startsWith('image/') ? 'fa-image' : f.type.startsWith('audio/') ? 'fa-music' : f.type.startsWith('video/') ? 'fa-video' : 'fa-file-pdf';
+        const icon = f.type.startsWith('image/') ? 'fa-image' : f.type.startsWith('audio/') ? 'fa-music' : f.type.startsWith('video/') ? 'fa-video' : f.name.match(/\.(epub|mobi|azw)/i) ? 'fa-book' : 'fa-file-pdf';
         fileInfo.innerHTML = `<i class="fas ${icon}" style="color:var(--accent);"></i> <strong>${escapeHtml(f.name)}</strong> (${(f.size / 1024 / 1024).toFixed(1)} MB)`;
         if (!document.getElementById('upload-title').value) {
             document.getElementById('upload-title').value = f.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
@@ -311,7 +311,7 @@ function handleFileSelect(input) {
         const totalSize = selectedFiles.reduce((s, f) => s + f.size, 0);
         fileList.innerHTML = `<div style="margin-bottom:8px;font-weight:600;"><i class="fas fa-layer-group" style="color:var(--accent);"></i> ${selectedFiles.length} files selected (${(totalSize / 1024 / 1024).toFixed(1)} MB total)</div>` +
             selectedFiles.map(f => {
-                const icon = f.type.startsWith('image/') ? 'fa-image' : f.type.startsWith('audio/') ? 'fa-music' : f.type.startsWith('video/') ? 'fa-video' : 'fa-file-pdf';
+                const icon = f.type.startsWith('image/') ? 'fa-image' : f.type.startsWith('audio/') ? 'fa-music' : f.type.startsWith('video/') ? 'fa-video' : f.name.match(/\.(epub|mobi|azw)/i) ? 'fa-book' : 'fa-file-pdf';
                 return `<div style="font-size:0.85rem;padding:2px 0;"><i class="fas ${icon}" style="color:var(--text-muted);width:16px;"></i> ${escapeHtml(f.name)} (${(f.size / 1024 / 1024).toFixed(1)} MB)</div>`;
             }).join('');
     }

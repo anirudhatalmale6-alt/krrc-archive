@@ -43,16 +43,22 @@ const storage = multer.diskStorage({
 const ALLOWED_MIMES = [
   'application/pdf',
   'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/epub+zip', 'application/x-mobipocket-ebook',
   'image/jpeg', 'image/png', 'image/gif', 'image/tiff', 'image/bmp',
   'audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/flac',
   'video/mp4', 'video/x-msvideo', 'video/x-matroska', 'video/quicktime', 'video/webm'
 ];
+const ALLOWED_EXTS = ['.pdf', '.doc', '.docx', '.epub', '.mobi', '.djvu', '.fb2', '.azw', '.azw3',
+  '.jpg', '.jpeg', '.png', '.gif', '.tiff', '.bmp',
+  '.mp3', '.wav', '.ogg', '.flac',
+  '.mp4', '.avi', '.mkv', '.mov', '.webm'];
 const upload = multer({
   storage,
   limits: { fileSize: 100 * 1024 * 1024 }, // 100MB
   fileFilter: (req, file, cb) => {
-    if (ALLOWED_MIMES.includes(file.mimetype)) cb(null, true);
-    else cb(new Error('File type not supported. Allowed: PDF, DOC, images, audio, video'));
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (ALLOWED_MIMES.includes(file.mimetype) || ALLOWED_EXTS.includes(ext)) cb(null, true);
+    else cb(new Error('File type not supported. Allowed: PDF, EPUB, DOC, MOBI, images, audio, video'));
   }
 });
 
@@ -95,13 +101,37 @@ app.post(BASE + '/api/auth/register', (req, res) => {
 });
 
 // ===== FILE UPLOAD & TEXT EXTRACTION =====
-function getFileMediaType(mimetype) {
+function getFileMediaType(mimetype, filename) {
   if (mimetype === 'application/pdf') return 'pdf';
+  const ext = (filename || '').toLowerCase();
+  if (mimetype === 'application/epub+zip' || ext.endsWith('.epub')) return 'epub';
+  if (mimetype === 'application/x-mobipocket-ebook' || ext.endsWith('.mobi') || ext.endsWith('.azw') || ext.endsWith('.azw3')) return 'ebook';
+  if (ext.endsWith('.djvu') || ext.endsWith('.fb2')) return 'ebook';
   if (mimetype.startsWith('image/')) return 'image';
   if (mimetype.startsWith('audio/')) return 'audio';
   if (mimetype.startsWith('video/')) return 'video';
   if (mimetype.includes('word') || mimetype.includes('document')) return 'document';
   return 'other';
+}
+
+async function extractEpubText(filePath) {
+  try {
+    const EPub = require('epub2').default || require('epub2');
+    const epub = await EPub.createAsync(filePath);
+    const chapters = epub.flow || [];
+    let fullText = '';
+    for (const ch of chapters) {
+      try {
+        const text = await epub.getChapterAsync(ch.id);
+        // Strip HTML tags
+        fullText += (text || '').replace(/<[^>]+>/g, ' ').replace(/&[a-z]+;/g, ' ') + '\n\n';
+      } catch (e) { /* skip unreadable chapters */ }
+    }
+    return { text: fullText.trim(), pages: chapters.length, title: epub.metadata?.title, author: epub.metadata?.creator, language: epub.metadata?.language };
+  } catch (e) {
+    console.error('[EPUB] Parse error:', e.message);
+    return { text: '', pages: 0 };
+  }
 }
 
 function autoDetectDocType(filename, mimetype) {
@@ -182,11 +212,12 @@ app.post(BASE + '/api/documents/upload', uploadLimiter, upload.single('file'), a
 
   const { title, author, subject, publication_place, publisher, language, year, edition, doc_type, description } = req.body;
   const id = uuid();
-  const mediaType = getFileMediaType(req.file.mimetype);
+  const mediaType = getFileMediaType(req.file.mimetype, req.file.originalname);
 
-  // Extract text from PDF
+  // Extract text based on file type
   let extractedText = '';
   let pageCount = 0;
+  let epubMeta = {};
   if (mediaType === 'pdf') {
     try {
       const pdfParse = require('pdf-parse');
@@ -197,14 +228,22 @@ app.post(BASE + '/api/documents/upload', uploadLimiter, upload.single('file'), a
     } catch (err) {
       console.error('[PDF] Text extraction error:', err.message);
     }
+  } else if (mediaType === 'epub') {
+    const result = await extractEpubText(req.file.path);
+    extractedText = result.text || '';
+    pageCount = result.pages || 0;
+    epubMeta = result;
   }
 
   const effectiveDocType = doc_type || autoDetectDocType(req.file.originalname, req.file.mimetype);
+  const effectiveTitle = title || epubMeta.title || req.file.originalname.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
+  const effectiveAuthor = author || epubMeta.author || '';
+  const effectiveLang = language || epubMeta.language || 'English';
 
   db.prepare(`INSERT INTO documents (id, title, subject, author, publication_place, publisher, language, year, edition, doc_type, description, filename, original_name, file_size, page_count, extracted_text, text_indexed, uploaded_by, upload_ip)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-    id, title || req.file.originalname.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' '), subject || '', author || '', publication_place || '', publisher || '',
-    language || 'English', year || '', edition || '', effectiveDocType, description || '',
+    id, effectiveTitle, subject || '', effectiveAuthor, publication_place || '', publisher || '',
+    effectiveLang, year || '', edition || '', effectiveDocType, description || '',
     req.file.filename, req.file.originalname, req.file.size, pageCount,
     extractedText, extractedText ? 1 : 0,
     req.body.uploaded_by_id || null, req.ip
@@ -223,7 +262,7 @@ app.post(BASE + '/api/documents/upload', uploadLimiter, upload.single('file'), a
   }
 
   // AI auto-categorise in background
-  const docTitle = title || req.file.originalname;
+  const docTitle = effectiveTitle;
   aiCategorise(id, docTitle, extractedText).catch(() => {});
 
   res.json({ id, title: title || req.file.originalname, pages: pageCount, text_extracted: !!extractedText, file_size: req.file.size, media_type: mediaType });
@@ -238,9 +277,10 @@ app.post(BASE + '/api/documents/mass-upload', uploadLimiter, upload.array('files
 
   for (const file of req.files) {
     const id = uuid();
-    const mediaType = getFileMediaType(file.mimetype);
+    const mediaType = getFileMediaType(file.mimetype, file.originalname);
     let extractedText = '';
     let pageCount = 0;
+    let epubMeta = {};
 
     if (mediaType === 'pdf') {
       try {
@@ -250,10 +290,15 @@ app.post(BASE + '/api/documents/mass-upload', uploadLimiter, upload.array('files
         extractedText = pdfData.text || '';
         pageCount = pdfData.numpages || 0;
       } catch (err) { console.error('[PDF] Parse error:', err.message); }
+    } else if (mediaType === 'epub') {
+      const result = await extractEpubText(file.path);
+      extractedText = result.text || '';
+      pageCount = result.pages || 0;
+      epubMeta = result;
     }
 
     const effectiveDocType = doc_type || autoDetectDocType(file.originalname, file.mimetype);
-    const fileTitle = file.originalname.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
+    const fileTitle = epubMeta.title || file.originalname.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
 
     db.prepare(`INSERT INTO documents (id, title, subject, author, publication_place, publisher, language, year, edition, doc_type, description, filename, original_name, file_size, page_count, extracted_text, text_indexed, uploaded_by, upload_ip)
       VALUES (?, ?, ?, ?, '', '', ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
