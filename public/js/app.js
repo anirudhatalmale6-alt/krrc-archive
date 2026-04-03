@@ -59,7 +59,7 @@ function showPage(page) {
 }
 
 // ===== AUTH =====
-function showLoginModal() { document.getElementById('login-modal').classList.add('active'); }
+function showLoginModal() { closeMobileMenu(); document.getElementById('login-modal').classList.add('active'); }
 function hideLoginModal() { document.getElementById('login-modal').classList.remove('active'); }
 function showRegisterModal() { hideLoginModal(); document.getElementById('register-modal').classList.add('active'); }
 function hideRegisterModal() { document.getElementById('register-modal').classList.remove('active'); }
@@ -268,7 +268,7 @@ async function showDocument(id) {
             ${doc.tags && doc.tags.length > 0 ? `<div style="margin:16px 0;"><span style="font-size:0.75rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;">Tags:</span> ${doc.tags.map(t => `<span class="badge badge-article" style="margin-left:6px;">${escapeHtml(t)}</span>`).join('')}</div>` : ''}
             ${excerpt && excerpt.excerpt ? `<div style="margin-top:24px;padding:20px;background:var(--bg-secondary);border-radius:8px;border:1px solid var(--border);">
                 <h3 style="font-size:0.9rem;color:var(--accent);margin-bottom:12px;"><i class="fas fa-book-open"></i> Excerpt (Reference Only)</h3>
-                <p style="font-size:0.85rem;color:var(--text-secondary);line-height:1.7;white-space:pre-wrap;">${escapeHtml(excerpt.excerpt)}</p>
+                <p style="font-size:0.85rem;color:var(--text-secondary);line-height:1.7;white-space:normal;">${escapeHtml(excerpt.excerpt).replace(/\n{3,}/g, '\n\n').replace(/([^\n])\n([^\n])/g, '$1 $2')}</p>
                 ${excerpt.has_more ? '<p style="font-size:0.75rem;color:var(--text-muted);margin-top:12px;text-align:center;"><i class="fas fa-lock"></i> Full text available for reference. Contact the archive for access.</p>' : ''}
             </div>` : ''}
             <div style="margin-top:24px;padding:16px;background:rgba(201,169,110,0.05);border:1px solid var(--border);border-radius:8px;text-align:center;">

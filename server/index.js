@@ -337,9 +337,13 @@ app.get(BASE + '/api/documents/:id', (req, res) => {
 app.get(BASE + '/api/documents/:id/excerpt', (req, res) => {
   const doc = db.prepare('SELECT extracted_text, title FROM documents WHERE id = ? AND is_approved = 1 AND is_public = 1').get(req.params.id);
   if (!doc) return res.status(404).json({ error: 'Not found' });
-  // Return only first 2000 chars as reference excerpt
-  const excerpt = (doc.extracted_text || '').substring(0, 2000);
-  res.json({ title: doc.title, excerpt, has_more: (doc.extracted_text || '').length > 2000 });
+  // Return only first 2000 chars as reference excerpt, clean up PDF text artifacts
+  let rawText = (doc.extracted_text || '').substring(0, 2000);
+  // Fix common PDF extraction issues: single words per line, excessive whitespace
+  rawText = rawText.replace(/([a-zA-Z,;:])\n([a-zA-Z])/g, '$1 $2'); // join broken lines
+  rawText = rawText.replace(/\n{3,}/g, '\n\n'); // collapse multiple blank lines
+  rawText = rawText.replace(/ {2,}/g, ' '); // collapse multiple spaces
+  res.json({ title: doc.title, excerpt: rawText.trim(), has_more: (doc.extracted_text || '').length > 2000 });
 });
 
 // ===== ADMIN ROUTES =====
