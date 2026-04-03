@@ -115,21 +115,34 @@ function autoDetectDocType(filename, mimetype) {
 async function aiCategorise(id, title, extractedText) {
   if (!AI_API_KEY || !extractedText) return;
   try {
-    const sample = extractedText.substring(0, 3000);
+    const sample = extractedText.substring(0, 4000);
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': AI_API_KEY, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20241022',
-        max_tokens: 300,
-        messages: [{ role: 'user', content: `Analyse this document and return ONLY a JSON object (no markdown) with these fields:
-- doc_type: one of book, article, think-tank-report, hr-report, govt-report, fact-finding, pamphlet, magazine, archival, other
-- subject: brief topic (max 60 chars)
-- language: detected language name
-- suggested_title: if the title seems like a filename, suggest a better one
+        max_tokens: 400,
+        messages: [{ role: 'user', content: `You are classifying a document for the Kashmir Research & Resource Center (KRRC) digital archive. Analyse the text carefully and return ONLY a JSON object (no markdown, no explanation) with these fields:
+
+- doc_type: MUST be one of: book, article, think-tank-report, hr-report, govt-report, fact-finding, pamphlet, magazine, archival, other
+  Classification guide:
+  * "book" = full-length published book (100+ pages, ISBN, chapters)
+  * "article" = research paper, journal article, short report, academic paper, policy brief (typically under 50 pages)
+  * "think-tank-report" = published by a think tank or policy institute
+  * "hr-report" = human rights organisation report
+  * "govt-report" = official government document, legislative record, census data
+  * "fact-finding" = investigation report, inquiry commission report
+  * "pamphlet" = political pamphlet, leaflet, manifesto
+  * "magazine" = magazine issue, periodical, newsletter
+  * "archival" = historical record, archival document, correspondence, telegram, memo
+  * "other" = does not fit above categories
+- subject: brief topic description (max 60 chars)
+- language: detected language name (English, Urdu, Kashmiri, Hindi, Persian, etc.)
+- suggested_title: a clean, descriptive title if the current title looks like a filename
 
 Title: ${title}
-Text sample: ${sample}` }]
+Text sample:
+${sample}` }]
       })
     });
     const data = await resp.json();
@@ -142,9 +155,12 @@ Text sample: ${sample}` }]
       if (ai.doc_type) { updates.push('doc_type = ?'); params.push(ai.doc_type); }
       if (ai.subject) { updates.push('subject = ?'); params.push(ai.subject); }
       if (ai.language) { updates.push('language = ?'); params.push(ai.language); }
-      if (ai.suggested_title && (!title || title === title.replace(/\.pdf$/i, '').replace(/[-_]/g, ' '))) {
+      // Update title if it looks auto-generated from filename
+      const cleanTitle = (title || '').replace(/\.pdf$/i, '').replace(/[-_]/g, ' ');
+      if (ai.suggested_title && (!title || title === cleanTitle || /^\d/.test(title))) {
         updates.push('title = ?'); params.push(ai.suggested_title);
       }
+      console.log('[AI Categorise] Doc ' + id + ': type=' + ai.doc_type + ', subject=' + ai.subject + ', lang=' + ai.language);
       if (updates.length > 0) {
         params.push(id);
         db.prepare('UPDATE documents SET ' + updates.join(', ') + ' WHERE id = ?').run(...params);
@@ -156,6 +172,13 @@ Text sample: ${sample}` }]
 // Single file upload
 app.post(BASE + '/api/documents/upload', uploadLimiter, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+  // Duplicate detection: check by original filename and file size
+  const duplicate = db.prepare('SELECT id, title FROM documents WHERE original_name = ? AND file_size = ?').get(req.file.originalname, req.file.size);
+  if (duplicate) {
+    fs.unlinkSync(req.file.path); // Remove the uploaded duplicate file
+    return res.status(409).json({ error: 'Duplicate file detected. "' + duplicate.title + '" has already been uploaded.', duplicate_id: duplicate.id });
+  }
 
   const { title, author, subject, publication_place, publisher, language, year, edition, doc_type, description } = req.body;
   const id = uuid();
