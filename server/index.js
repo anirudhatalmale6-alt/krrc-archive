@@ -23,8 +23,23 @@ app.use(express.json({ limit: '1mb' }));
 
 const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 300, message: { error: 'Too many requests' }, validate: { xForwardedForHeader: false } });
 const uploadLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 20, message: { error: 'Too many uploads, try again later' }, validate: { xForwardedForHeader: false } });
+const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, message: { error: 'Too many login attempts. Please wait 15 minutes.' }, validate: { xForwardedForHeader: false } });
+const chatLimiter = rateLimit({ windowMs: 60 * 1000, max: 15, message: { error: 'Too many chat messages. Please slow down.' }, validate: { xForwardedForHeader: false } });
 
 app.use(BASE + '/api', apiLimiter);
+
+// CORS - only allow same origin
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  next();
+});
+
+// Block direct access to uploaded files (reference-only platform - no downloads)
+app.use(BASE + '/uploads', (req, res) => {
+  res.status(403).json({ error: 'Direct file access is not permitted. Use the KRRC Ai chatbot to explore the archive.' });
+});
 
 // Static files
 app.use(BASE, express.static(path.join(__dirname, '../public')));
@@ -79,24 +94,36 @@ function requireAdmin(req, res, next) {
 }
 
 // ===== AUTH =====
-app.post(BASE + '/api/auth/login', (req, res) => {
+app.post(BASE + '/api/auth/login', authLimiter, (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
-  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+  // Sanitise email
+  const cleanEmail = email.trim().toLowerCase();
+  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(cleanEmail);
   if (!user || !bcrypt.compareSync(password, user.password)) return res.status(401).json({ error: 'Invalid credentials' });
   if (!user.is_approved) return res.status(403).json({ error: 'Account pending approval' });
-  const token = jwt.sign({ id: user.id, email: user.email, name: user.name, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
+  const token = jwt.sign({ id: user.id, email: user.email, name: user.name, role: user.role }, JWT_SECRET, { expiresIn: '24h' });
   res.json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role } });
 });
 
-app.post(BASE + '/api/auth/register', (req, res) => {
+app.post(BASE + '/api/auth/register', authLimiter, (req, res) => {
   const { email, password, name } = req.body;
   if (!email || !password || !name) return res.status(400).json({ error: 'All fields required' });
-  const exists = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+  // Sanitise inputs
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanName = name.trim().replace(/[<>]/g, '');
+  // Validate email format
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) return res.status(400).json({ error: 'Invalid email format' });
+  // Password strength: min 8 chars, at least 1 uppercase, 1 lowercase, 1 number
+  if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+  if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
+    return res.status(400).json({ error: 'Password must contain uppercase, lowercase, and a number' });
+  }
+  const exists = db.prepare('SELECT id FROM users WHERE email = ?').get(cleanEmail);
   if (exists) return res.status(400).json({ error: 'Email already registered' });
   const id = uuid();
-  const hash = bcrypt.hashSync(password, 10);
-  db.prepare('INSERT INTO users (id, email, password, name) VALUES (?, ?, ?, ?)').run(id, email, hash, name);
+  const hash = bcrypt.hashSync(password, 12);
+  db.prepare('INSERT INTO users (id, email, password, name) VALUES (?, ?, ?, ?)').run(id, cleanEmail, hash, cleanName);
   res.json({ success: true, message: 'Registration submitted. Awaiting admin approval.' });
 });
 
@@ -195,8 +222,29 @@ ${sample}` }]
         params.push(id);
         db.prepare('UPDATE documents SET ' + updates.join(', ') + ' WHERE id = ?').run(...params);
       }
+      // Auto-link to category based on doc_type
+      if (ai.doc_type) {
+        linkDocToCategory(id, ai.doc_type);
+      }
     }
   } catch (e) { console.error('[AI Categorise] Error:', e.message); }
+}
+
+// Link a document to its category based on doc_type
+function linkDocToCategory(docId, docType) {
+  const typeToCategory = {
+    'book': 'Books', 'article': 'Research Articles', 'think-tank-report': 'Think Tank Reports',
+    'hr-report': 'HR Organisation Reports', 'govt-report': 'Government Reports',
+    'fact-finding': 'Fact-Finding Mission Documents', 'pamphlet': 'Political Pamphlets',
+    'magazine': 'Magazines', 'archival': 'Archival Data'
+  };
+  const catName = typeToCategory[docType];
+  if (!catName) return;
+  const cat = db.prepare('SELECT id FROM categories WHERE name = ?').get(catName);
+  if (cat) {
+    db.prepare('DELETE FROM document_categories WHERE document_id = ?').run(docId);
+    db.prepare('INSERT INTO document_categories (document_id, category_id) VALUES (?, ?)').run(docId, cat.id);
+  }
 }
 
 // Single file upload
@@ -260,6 +308,9 @@ app.post(BASE + '/api/documents/upload', uploadLimiter, upload.single('file'), a
       }
     } catch (e) { console.error('[FTS] Index error:', e.message); }
   }
+
+  // Link to category if doc_type provided manually
+  if (doc_type) linkDocToCategory(id, doc_type);
 
   // AI auto-categorise in background
   const docTitle = effectiveTitle;
@@ -688,7 +739,7 @@ app.delete(BASE + '/api/admin/categories/:id', authenticateToken, requireAdmin, 
 });
 
 // ===== AI CHATBOT =====
-app.post(BASE + '/api/chat', async (req, res) => {
+app.post(BASE + '/api/chat', chatLimiter, async (req, res) => {
   if (!AI_API_KEY) return res.status(500).json({ error: 'AI not configured' });
   const { message, sessionId } = req.body;
   if (!message) return res.status(400).json({ error: 'Message required' });
