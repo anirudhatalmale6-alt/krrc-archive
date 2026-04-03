@@ -61,51 +61,24 @@
             <div class="cat-grid" id="home-categories"></div>
         </div>
 
-        <div class="container page-section">
-            <h2 class="section-title">Recently Added</h2>
-            <p class="section-subtitle">Latest additions to the archive</p>
-            <div class="doc-list" id="home-recent"></div>
+        <!-- Recently Added section hidden - documents only accessible via KRRC Ai chatbot -->
+        <div class="container page-section" style="text-align:center;">
+            <h2 class="section-title">Access the Archive</h2>
+            <p class="section-subtitle">Use KRRC Ai to explore our collection. Ask questions about Kashmir and receive answers with full document references.</p>
+            <button class="btn btn-accent" onclick="showPage('chat')" style="margin-top:16px;font-size:1.1rem;padding:14px 32px;"><i class="fas fa-robot"></i> Ask KRRC Ai</button>
         </div>
     </div>
 
     <!-- ===== BROWSE/SEARCH PAGE ===== -->
     <div class="page" id="page-browse" style="margin-top:64px;">
         <div class="container page-section">
-            <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:24px;">
-                <h2 class="section-title" style="flex:1;margin:0;">Archive</h2>
-                <div class="search-bar" style="max-width:400px;border-width:1px;">
-                    <input type="text" id="browse-search" placeholder="Search..." onkeydown="if(event.key==='Enter')browseSearch()">
-                    <button onclick="browseSearch()" style="padding:10px 20px;"><i class="fas fa-search"></i></button>
-                </div>
+            <h2 class="section-title">Archive Overview</h2>
+            <p class="section-subtitle">Our archive contains documents across the following categories. Use KRRC Ai to explore the collection.</p>
+            <div class="cat-grid" id="browse-categories"></div>
+            <div style="text-align:center;margin-top:32px;">
+                <p style="color:var(--text-secondary);margin-bottom:16px;">To search and access information from our archive, ask KRRC Ai. The AI will answer your questions with proper document references and citations.</p>
+                <button class="btn btn-accent" onclick="showPage('chat')" style="font-size:1.1rem;padding:14px 32px;"><i class="fas fa-robot"></i> Ask KRRC Ai</button>
             </div>
-            <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px;" id="browse-filters">
-                <select id="filter-category" onchange="loadBrowseDocs()" style="width:auto;min-width:140px;"><option value="">All Categories</option></select>
-                <select id="filter-language" onchange="loadBrowseDocs()" style="width:auto;min-width:120px;"><option value="">All Languages</option></select>
-                <select id="filter-type" onchange="loadBrowseDocs()" style="width:auto;min-width:120px;">
-                    <option value="">All Types</option>
-                    <option value="book">Books</option>
-                    <option value="article">Research Articles</option>
-                    <option value="think-tank-report">Think Tank Reports</option>
-                    <option value="hr-report">HR Organisation Reports</option>
-                    <option value="govt-report">Government Reports</option>
-                    <option value="fact-finding">Fact-Finding Mission Docs</option>
-                    <option value="pamphlet">Political Pamphlets</option>
-                    <option value="magazine">Magazines</option>
-                    <option value="archival">Archival Data</option>
-                    <option value="other">Other</option>
-                </select>
-                <select id="filter-sort" onchange="loadBrowseDocs()" style="width:auto;min-width:120px;">
-                    <option value="newest">Newest First</option>
-                    <option value="oldest">Oldest First</option>
-                    <option value="title">Title A-Z</option>
-                    <option value="author">Author A-Z</option>
-                </select>
-            </div>
-            <div id="browse-ai-answer" class="hidden" style="background:var(--accent-light);border:1px solid var(--accent);border-radius:8px;padding:16px;margin-bottom:20px;"></div>
-            <div class="doc-list" id="browse-results">
-                <div style="text-align:center;padding:40px;color:var(--text-muted);"><div class="spinner"></div><br>Loading...</div>
-            </div>
-            <div class="pagination" id="browse-pagination"></div>
         </div>
     </div>
 

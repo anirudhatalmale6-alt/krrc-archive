@@ -60,7 +60,7 @@ function showPage(page) {
     window.scrollTo(0, 0);
 
     if (page === 'home') loadHomePage();
-    if (page === 'browse') loadBrowseDocs();
+    if (page === 'browse') loadBrowseOverview();
     if (page === 'admin') loadAdminDashboard();
 
     document.getElementById('main-footer').style.display = page === 'admin' ? 'none' : '';
@@ -121,91 +121,49 @@ async function loadHomePage() {
         const cats = await fetch(API + '/api/categories').then(r => r.json());
         const grid = document.getElementById('home-categories');
         grid.innerHTML = cats.map(c => `
-            <div class="cat-card" onclick="browseByCategory('${c.id}', '${escapeHtml(c.name)}')">
+            <div class="cat-card" onclick="showPage('chat')">
                 <h3>${escapeHtml(c.name)}</h3>
                 <div class="count">${c.doc_count || 0} documents</div>
             </div>
         `).join('');
         document.getElementById('stat-categories').textContent = cats.length;
+        // Total doc count from categories
+        const totalDocs = cats.reduce((sum, c) => sum + (c.doc_count || 0), 0);
+        document.getElementById('stat-docs').textContent = totalDocs;
     } catch (e) {}
 
-    // Load recent docs
+    // Load archive stats (counts only, no document details)
     try {
-        const data = await fetch(API + '/api/documents?limit=5').then(r => r.json());
-        renderDocList(document.getElementById('home-recent'), data.documents);
-        document.getElementById('stat-docs').textContent = data.total;
-
-        // Calculate total pages
-        const totalPages = data.documents.reduce((sum, d) => sum + (d.page_count || 0), 0);
-        document.getElementById('stat-pages').textContent = totalPages > 1000 ? Math.round(totalPages / 1000) + 'K+' : totalPages;
-
-        // Languages
-        const langs = [...new Set(data.documents.map(d => d.language))].length;
-        document.getElementById('stat-languages').textContent = langs;
+        const stats = await fetch(API + '/api/stats').then(r => r.json());
+        if (stats.total_docs) document.getElementById('stat-docs').textContent = stats.total_docs;
+        if (stats.total_pages) document.getElementById('stat-pages').textContent = stats.total_pages > 1000 ? Math.round(stats.total_pages / 1000) + 'K+' : stats.total_pages;
+        if (stats.languages) document.getElementById('stat-languages').textContent = stats.languages;
     } catch (e) {}
 }
 
 // ===== BROWSE =====
-function browseByCategory(catId, catName) {
-    showPage('browse');
-    document.getElementById('filter-category').value = catId;
-    loadBrowseDocs();
-}
-
-async function loadBrowseDocs() {
-    const category = document.getElementById('filter-category').value;
-    const language = document.getElementById('filter-language').value;
-    const type = document.getElementById('filter-type').value;
-    const sort = document.getElementById('filter-sort').value;
-    const container = document.getElementById('browse-results');
-    container.innerHTML = '<div style="text-align:center;padding:40px;"><div class="spinner"></div></div>';
-
+async function loadBrowseOverview() {
     try {
-        const params = new URLSearchParams({ page: browsePage, limit: 20, sort });
-        if (category) params.set('category', category);
-        if (language) params.set('language', language);
-        if (type) params.set('type', type);
-        const data = await fetch(API + '/api/documents?' + params).then(r => r.json());
-        renderDocList(container, data.documents);
-        renderPagination(data.page, data.pages);
-    } catch (e) { container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);">Error loading documents</div>'; }
-}
-
-async function browseSearch() {
-    const q = document.getElementById('browse-search').value.trim();
-    if (!q) { loadBrowseDocs(); return; }
-    const container = document.getElementById('browse-results');
-    const aiBox = document.getElementById('browse-ai-answer');
-    container.innerHTML = '<div style="text-align:center;padding:40px;"><div class="spinner"></div></div>';
-
-    try {
-        // Try AI search first
-        const aiData = await apiFetch('/api/ai-search', { method: 'POST', body: JSON.stringify({ query: q }) });
-        if (aiData.answer) {
-            aiBox.classList.remove('hidden');
-            aiBox.innerHTML = `<div style="font-weight:600;margin-bottom:8px;color:var(--accent);"><i class="fas fa-robot"></i> AI Summary</div><div style="font-size:0.9rem;line-height:1.6;white-space:pre-wrap;">${escapeHtml(aiData.answer)}</div>`;
-        } else { aiBox.classList.add('hidden'); }
-        if (aiData.documents && aiData.documents.length > 0) {
-            renderDocList(container, aiData.documents);
-        } else {
-            container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);">No documents found for "' + escapeHtml(q) + '"</div>';
-        }
-    } catch (e) {
-        // Fallback to regular search
-        try {
-            const data = await fetch(API + '/api/documents/search?q=' + encodeURIComponent(q)).then(r => r.json());
-            aiBox.classList.add('hidden');
-            renderDocList(container, data.documents);
-        } catch (e2) { container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);">Search error</div>'; }
-    }
+        const cats = await fetch(API + '/api/categories').then(r => r.json());
+        const grid = document.getElementById('browse-categories');
+        grid.innerHTML = cats.map(c => `
+            <div class="cat-card" onclick="showPage('chat')">
+                <h3>${escapeHtml(c.name)}</h3>
+                <div class="count">${c.doc_count || 0} documents</div>
+            </div>
+        `).join('');
+    } catch (e) {}
 }
 
 function heroSearch() {
     const q = document.getElementById('hero-search').value.trim();
     if (!q) return;
-    showPage('browse');
-    document.getElementById('browse-search').value = q;
-    browseSearch();
+    showPage('chat');
+    // Pre-fill the chatbot with the search query
+    setTimeout(() => {
+        const input = document.getElementById('chat-input');
+        if (input) { input.value = q; sendChat(); }
+    }, 200);
 }
 
 function renderDocList(container, docs) {

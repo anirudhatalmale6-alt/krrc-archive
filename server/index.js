@@ -658,6 +658,14 @@ app.post(BASE + '/api/admin/ftp-import-all', authenticateToken, requireAdmin, as
   res.json({ total: files.length, imported: results.filter(r => r.status === 'imported').length, skipped: results.filter(r => r.status === 'skipped').length, results });
 });
 
+// Public stats (counts only, no document details)
+app.get(BASE + '/api/stats', (req, res) => {
+  const totalDocs = db.prepare('SELECT COUNT(*) as cnt FROM documents WHERE is_approved = 1').get().cnt;
+  const totalPages = db.prepare('SELECT COALESCE(SUM(page_count), 0) as cnt FROM documents WHERE is_approved = 1').get().cnt;
+  const languages = db.prepare('SELECT COUNT(DISTINCT language) as cnt FROM documents WHERE is_approved = 1 AND language IS NOT NULL').get().cnt;
+  res.json({ total_docs: totalDocs, total_pages: totalPages, languages });
+});
+
 // Categories CRUD
 app.get(BASE + '/api/categories', (req, res) => {
   const cats = db.prepare('SELECT c.*, (SELECT COUNT(*) FROM document_categories dc JOIN documents d ON d.id = dc.document_id WHERE dc.category_id = c.id AND d.is_approved = 1) as doc_count FROM categories c ORDER BY c.sort_order').all();
@@ -700,18 +708,59 @@ app.post(BASE + '/api/chat', async (req, res) => {
   // Save user message
   db.prepare('INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)').run(session.id, 'user', message);
 
-  // Search archive for relevant content
+  // Search archive for relevant content with multiple strategies
   let contextDocs = '';
   try {
-    const searchResults = db.prepare(`SELECT d.title, d.author, d.year, d.language, d.subject,
-      snippet(documents_fts, 4, '', '', '...', 60) as snippet
-      FROM documents_fts fts JOIN documents d ON d.rowid = fts.rowid
-      WHERE documents_fts MATCH ? AND d.is_approved = 1 LIMIT 5`).all(message.split(' ').filter(w => w.length > 2).join(' OR '));
-    if (searchResults.length > 0) {
-      contextDocs = '\n\nRelevant documents from the KRRC archive:\n' +
-        searchResults.map(d => `- "${d.title}" by ${d.author || 'Unknown'} (${d.year || 'N/A'}, ${d.language}) - ${d.snippet || d.subject || ''}`).join('\n');
+    // Strategy 1: FTS5 full-text search with sanitised query
+    const words = message.replace(/[^\w\s]/g, '').split(/\s+/).filter(w => w.length > 2);
+    let searchResults = [];
+    if (words.length > 0) {
+      const ftsQuery = words.map(w => `"${w}"`).join(' OR ');
+      try {
+        searchResults = db.prepare(`SELECT d.id, d.title, d.author, d.year, d.language, d.subject, d.page_count, d.doc_type,
+          substr(d.extracted_text, 1, 8000) as text_excerpt
+          FROM documents_fts fts JOIN documents d ON d.rowid = fts.rowid
+          WHERE documents_fts MATCH ? AND d.is_approved = 1 LIMIT 5`).all(ftsQuery);
+      } catch (ftsErr) { /* FTS query failed, try fallback */ }
     }
-  } catch (e) { /* search failed, continue without context */ }
+
+    // Strategy 2: If FTS returned nothing, try LIKE search on key fields
+    if (searchResults.length === 0 && words.length > 0) {
+      const likeConditions = words.slice(0, 5).map(() => '(d.title LIKE ? OR d.author LIKE ? OR d.subject LIKE ? OR d.extracted_text LIKE ?)').join(' OR ');
+      const likeParams = words.slice(0, 5).flatMap(w => [`%${w}%`, `%${w}%`, `%${w}%`, `%${w}%`]);
+      searchResults = db.prepare(`SELECT d.id, d.title, d.author, d.year, d.language, d.subject, d.page_count, d.doc_type,
+        substr(d.extracted_text, 1, 8000) as text_excerpt
+        FROM documents d WHERE d.is_approved = 1 AND (${likeConditions}) LIMIT 5`).all(...likeParams);
+    }
+
+    // Strategy 3: If still nothing, provide all approved documents metadata + initial text
+    if (searchResults.length === 0) {
+      searchResults = db.prepare(`SELECT d.id, d.title, d.author, d.year, d.language, d.subject, d.page_count, d.doc_type,
+        substr(d.extracted_text, 1, 4000) as text_excerpt
+        FROM documents d WHERE d.is_approved = 1 LIMIT 10`).all();
+    }
+
+    if (searchResults.length > 0) {
+      contextDocs = '\n\n=== KRRC ARCHIVE DOCUMENTS ===\n' +
+        'Below are relevant documents from the archive. Use these to answer the user\'s question with specific citations.\n\n' +
+        searchResults.map((d, i) => {
+          let entry = `--- DOCUMENT ${i + 1} ---\n`;
+          entry += `Title: ${d.title}\n`;
+          entry += `Author: ${d.author || 'Unknown'}\n`;
+          entry += `Year: ${d.year || 'N/A'}\n`;
+          entry += `Language: ${d.language || 'N/A'}\n`;
+          entry += `Type: ${d.doc_type || 'N/A'}\n`;
+          entry += `Pages: ${d.page_count || 'N/A'}\n`;
+          if (d.subject) entry += `Subject: ${d.subject}\n`;
+          if (d.text_excerpt) {
+            // Clean up extracted text
+            const cleanText = d.text_excerpt.replace(/\n{3,}/g, '\n\n').replace(/\s{3,}/g, ' ').trim();
+            entry += `\nContent excerpt:\n${cleanText}\n`;
+          }
+          return entry;
+        }).join('\n');
+    }
+  } catch (e) { console.error('[Chat] Archive search error:', e.message); }
 
   // Get conversation history
   const history = db.prepare('SELECT role, content FROM chat_messages WHERE session_id = ? ORDER BY created_at DESC LIMIT 10').all(session.id).reverse();
@@ -722,17 +771,20 @@ app.post(BASE + '/api/chat', async (req, res) => {
       headers: { 'Content-Type': 'application/json', 'x-api-key': AI_API_KEY, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 1500,
-        system: `You are KRRC Ai, the Kashmir Research & Resource Center AI assistant. You help users explore the digital archive of Kashmir-related books, research articles, reports, and documents.
+        max_tokens: 2500,
+        system: `You are KRRC Ai, the Kashmir Research & Resource Center AI assistant. You have access to a digital archive of Kashmir-related books, research articles, reports, and documents.
 
-IMPORTANT RULES:
-- When referencing documents, ALWAYS cite them as: Book/Document Title, Author, Year, Page number(s) where applicable.
-- NEVER provide download links, file URLs, or direct access to documents.
-- NEVER offer to share, send, or provide the full document or PDF.
-- You provide REFERENCES ONLY - like a librarian pointing to a book on a shelf.
-- Be scholarly, accurate, and helpful. Draw from the archive documents when possible.
-- If you don't know something, say so honestly.
-- Be respectful of all perspectives on Kashmir.
+CRITICAL INSTRUCTIONS:
+1. You MUST use the archive documents provided below to answer questions. When archive documents are provided, READ their content excerpts carefully and base your answers on them.
+2. For EVERY claim or piece of information you provide, cite the specific source document using this format:
+   (Source: "Document Title" by Author, Year)
+3. If the archive contains relevant information, synthesise it into a clear answer with proper citations.
+4. NEVER say "I have documents but cannot access them" - you CAN access them, they are provided below.
+5. NEVER provide download links, file URLs, or offer to share/send documents.
+6. You provide REFERENCES ONLY - like a scholar citing sources.
+7. If no archive documents are relevant to the question, say so honestly and explain what topics the archive does cover.
+8. Be scholarly, accurate, and respectful of all perspectives on Kashmir.
+9. When quoting or paraphrasing from document content, indicate the document you are drawing from.
 ${contextDocs}`,
         messages: history.map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.content }))
       })
