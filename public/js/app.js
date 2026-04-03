@@ -7,6 +7,14 @@ let browsePage = 1;
 
 // ===== HELPERS =====
 function escapeHtml(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function renderMarkdown(text) {
+    return escapeHtml(text)
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/^- (.+)/gm, '<li>$1</li>')
+        .replace(/(<li>.*<\/li>)/gs, '<ul>$1</ul>')
+        .replace(/\n/g, '<br>');
+}
 function formatDocType(t) { const labels = { book: 'Book', article: 'Research Article', 'think-tank-report': 'Think Tank Report', 'hr-report': 'HR Org Report', 'govt-report': 'Govt Report', 'fact-finding': 'Fact-Finding', pamphlet: 'Pamphlet', magazine: 'Magazine', archival: 'Archival', other: 'Other' }; return labels[t] || t || 'Book'; }
 
 async function apiFetch(path, opts = {}) {
@@ -428,7 +436,7 @@ async function sendChat() {
         const data = await apiFetch('/api/chat', { method: 'POST', body: JSON.stringify({ message: msg, sessionId: chatSessionId }) });
         chatSessionId = data.sessionId;
         localStorage.setItem('krrc_chat_session', chatSessionId);
-        document.getElementById('chat-loading').innerHTML = data.reply.replace(/\n/g, '<br>');
+        document.getElementById('chat-loading').innerHTML = renderMarkdown(data.reply);
     } catch (err) {
         document.getElementById('chat-loading').innerHTML = 'Sorry, I encountered an error. Please try again.';
     }
