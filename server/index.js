@@ -40,12 +40,19 @@ const storage = multer.diskStorage({
     cb(null, uuid() + ext);
   }
 });
+const ALLOWED_MIMES = [
+  'application/pdf',
+  'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'image/jpeg', 'image/png', 'image/gif', 'image/tiff', 'image/bmp',
+  'audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/flac',
+  'video/mp4', 'video/x-msvideo', 'video/x-matroska', 'video/quicktime', 'video/webm'
+];
 const upload = multer({
   storage,
   limits: { fileSize: 100 * 1024 * 1024 }, // 100MB
   fileFilter: (req, file, cb) => {
-    if (file.mimetype === 'application/pdf') cb(null, true);
-    else cb(new Error('Only PDF files are allowed'));
+    if (ALLOWED_MIMES.includes(file.mimetype)) cb(null, true);
+    else cb(new Error('File type not supported. Allowed: PDF, DOC, images, audio, video'));
   }
 });
 
@@ -87,30 +94,94 @@ app.post(BASE + '/api/auth/register', (req, res) => {
   res.json({ success: true, message: 'Registration submitted. Awaiting admin approval.' });
 });
 
-// ===== PDF UPLOAD & TEXT EXTRACTION =====
+// ===== FILE UPLOAD & TEXT EXTRACTION =====
+function getFileMediaType(mimetype) {
+  if (mimetype === 'application/pdf') return 'pdf';
+  if (mimetype.startsWith('image/')) return 'image';
+  if (mimetype.startsWith('audio/')) return 'audio';
+  if (mimetype.startsWith('video/')) return 'video';
+  if (mimetype.includes('word') || mimetype.includes('document')) return 'document';
+  return 'other';
+}
+
+function autoDetectDocType(filename, mimetype) {
+  const media = getFileMediaType(mimetype);
+  if (media === 'image') return 'image';
+  if (media === 'audio') return 'audio';
+  if (media === 'video') return 'video';
+  return 'book';
+}
+
+async function aiCategorise(id, title, extractedText) {
+  if (!AI_API_KEY || !extractedText) return;
+  try {
+    const sample = extractedText.substring(0, 3000);
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': AI_API_KEY, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20241022',
+        max_tokens: 300,
+        messages: [{ role: 'user', content: `Analyse this document and return ONLY a JSON object (no markdown) with these fields:
+- doc_type: one of book, article, think-tank-report, hr-report, govt-report, fact-finding, pamphlet, magazine, archival, other
+- subject: brief topic (max 60 chars)
+- language: detected language name
+- suggested_title: if the title seems like a filename, suggest a better one
+
+Title: ${title}
+Text sample: ${sample}` }]
+      })
+    });
+    const data = await resp.json();
+    const text = data.content?.[0]?.text || '';
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const ai = JSON.parse(jsonMatch[0]);
+      const updates = [];
+      const params = [];
+      if (ai.doc_type) { updates.push('doc_type = ?'); params.push(ai.doc_type); }
+      if (ai.subject) { updates.push('subject = ?'); params.push(ai.subject); }
+      if (ai.language) { updates.push('language = ?'); params.push(ai.language); }
+      if (ai.suggested_title && (!title || title === title.replace(/\.pdf$/i, '').replace(/[-_]/g, ' '))) {
+        updates.push('title = ?'); params.push(ai.suggested_title);
+      }
+      if (updates.length > 0) {
+        params.push(id);
+        db.prepare('UPDATE documents SET ' + updates.join(', ') + ' WHERE id = ?').run(...params);
+      }
+    }
+  } catch (e) { console.error('[AI Categorise] Error:', e.message); }
+}
+
+// Single file upload
 app.post(BASE + '/api/documents/upload', uploadLimiter, upload.single('file'), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'No PDF file uploaded' });
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
   const { title, author, subject, publication_place, publisher, language, year, edition, doc_type, description } = req.body;
   const id = uuid();
+  const mediaType = getFileMediaType(req.file.mimetype);
 
   // Extract text from PDF
   let extractedText = '';
   let pageCount = 0;
-  try {
-    const pdfParse = require('pdf-parse');
-    const dataBuffer = fs.readFileSync(req.file.path);
-    const pdfData = await pdfParse(dataBuffer);
-    extractedText = pdfData.text || '';
-    pageCount = pdfData.numpages || 0;
-  } catch (err) {
-    console.error('[PDF] Text extraction error:', err.message);
+  if (mediaType === 'pdf') {
+    try {
+      const pdfParse = require('pdf-parse');
+      const dataBuffer = fs.readFileSync(req.file.path);
+      const pdfData = await pdfParse(dataBuffer);
+      extractedText = pdfData.text || '';
+      pageCount = pdfData.numpages || 0;
+    } catch (err) {
+      console.error('[PDF] Text extraction error:', err.message);
+    }
   }
+
+  const effectiveDocType = doc_type || autoDetectDocType(req.file.originalname, req.file.mimetype);
 
   db.prepare(`INSERT INTO documents (id, title, subject, author, publication_place, publisher, language, year, edition, doc_type, description, filename, original_name, file_size, page_count, extracted_text, text_indexed, uploaded_by, upload_ip)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-    id, title || req.file.originalname, subject || '', author || '', publication_place || '', publisher || '',
-    language || 'English', year || '', edition || '', doc_type || 'book', description || '',
+    id, title || req.file.originalname.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' '), subject || '', author || '', publication_place || '', publisher || '',
+    language || 'English', year || '', edition || '', effectiveDocType, description || '',
     req.file.filename, req.file.originalname, req.file.size, pageCount,
     extractedText, extractedText ? 1 : 0,
     req.body.uploaded_by_id || null, req.ip
@@ -128,7 +199,64 @@ app.post(BASE + '/api/documents/upload', uploadLimiter, upload.single('file'), a
     } catch (e) { console.error('[FTS] Index error:', e.message); }
   }
 
-  res.json({ id, title: title || req.file.originalname, pages: pageCount, text_extracted: !!extractedText, file_size: req.file.size });
+  // AI auto-categorise in background
+  const docTitle = title || req.file.originalname;
+  aiCategorise(id, docTitle, extractedText).catch(() => {});
+
+  res.json({ id, title: title || req.file.originalname, pages: pageCount, text_extracted: !!extractedText, file_size: req.file.size, media_type: mediaType });
+});
+
+// Mass upload (multiple files)
+app.post(BASE + '/api/documents/mass-upload', uploadLimiter, upload.array('files', 50), async (req, res) => {
+  if (!req.files || req.files.length === 0) return res.status(400).json({ error: 'No files uploaded' });
+
+  const { author, subject, language, year, doc_type, description } = req.body;
+  const results = [];
+
+  for (const file of req.files) {
+    const id = uuid();
+    const mediaType = getFileMediaType(file.mimetype);
+    let extractedText = '';
+    let pageCount = 0;
+
+    if (mediaType === 'pdf') {
+      try {
+        const pdfParse = require('pdf-parse');
+        const dataBuffer = fs.readFileSync(file.path);
+        const pdfData = await pdfParse(dataBuffer);
+        extractedText = pdfData.text || '';
+        pageCount = pdfData.numpages || 0;
+      } catch (err) { console.error('[PDF] Parse error:', err.message); }
+    }
+
+    const effectiveDocType = doc_type || autoDetectDocType(file.originalname, file.mimetype);
+    const fileTitle = file.originalname.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
+
+    db.prepare(`INSERT INTO documents (id, title, subject, author, publication_place, publisher, language, year, edition, doc_type, description, filename, original_name, file_size, page_count, extracted_text, text_indexed, uploaded_by, upload_ip)
+      VALUES (?, ?, ?, ?, '', '', ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      id, fileTitle, subject || '', author || '',
+      language || 'English', year || '', effectiveDocType, description || '',
+      file.filename, file.originalname, file.size, pageCount,
+      extractedText, extractedText ? 1 : 0,
+      req.body.uploaded_by_id || null, req.ip
+    );
+
+    if (extractedText) {
+      try {
+        const doc = db.prepare('SELECT rowid, title, author, subject, description, extracted_text, tags FROM documents WHERE id = ?').get(id);
+        if (doc) {
+          db.prepare('INSERT INTO documents_fts(rowid, title, author, subject, description, extracted_text, tags) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+            doc.rowid, doc.title, doc.author, doc.subject, doc.description, doc.extracted_text, doc.tags
+          );
+        }
+      } catch (e) { /* ignore */ }
+    }
+
+    aiCategorise(id, fileTitle, extractedText).catch(() => {});
+    results.push({ id, filename: file.originalname, pages: pageCount, text_extracted: !!extractedText, media_type: mediaType });
+  }
+
+  res.json({ total: results.length, results });
 });
 
 // ===== DOCUMENT ROUTES =====
@@ -490,7 +618,17 @@ app.post(BASE + '/api/chat', async (req, res) => {
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 1500,
-        system: `You are the KRRC (Kashmir Research and Resource Center) AI assistant. You help users explore the digital archive of Kashmir-related books, research articles, and documents. You answer questions about Kashmir's history, culture, politics, geography, literature, and more, drawing from the archive when possible. Be helpful, scholarly, and accurate. If you reference archive documents, mention their titles and authors. If you don't know something, say so. Always be respectful of all perspectives on Kashmir.${contextDocs}`,
+        system: `You are KRRC Ai, the Kashmir Research & Resource Center AI assistant. You help users explore the digital archive of Kashmir-related books, research articles, reports, and documents.
+
+IMPORTANT RULES:
+- When referencing documents, ALWAYS cite them as: Book/Document Title, Author, Year, Page number(s) where applicable.
+- NEVER provide download links, file URLs, or direct access to documents.
+- NEVER offer to share, send, or provide the full document or PDF.
+- You provide REFERENCES ONLY - like a librarian pointing to a book on a shelf.
+- Be scholarly, accurate, and helpful. Draw from the archive documents when possible.
+- If you don't know something, say so honestly.
+- Be respectful of all perspectives on Kashmir.
+${contextDocs}`,
         messages: history.map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.content }))
       })
     });
@@ -537,7 +675,7 @@ app.post(BASE + '/api/ai-search', async (req, res) => {
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 1000,
-        system: 'You are a research assistant for KRRC (Kashmir Research and Resource Center). Given search results from the archive, provide a brief, helpful summary answering the user\'s query. Reference specific documents by title and author when relevant. Be concise.',
+        system: 'You are KRRC Ai, a research assistant for the Kashmir Research & Resource Center. Given search results from the archive, provide a brief, helpful summary answering the user\'s query. Always cite sources as: Title, Author, Year, Page (where applicable). NEVER provide download links or offer to share full documents. Provide references only. Be concise and scholarly.',
         messages: [{ role: 'user', content: `Query: "${query}"\n\nArchive results:\n${context}\n\nPlease summarize what the archive has on this topic.` }]
       })
     });

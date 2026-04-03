@@ -141,6 +141,25 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
   max-width: 700px;
   margin: 0 auto 32px;
 }
+.hero-intro {
+  max-width: 800px;
+  margin: 0 auto 36px;
+  text-align: left;
+  background: rgba(201,169,110,0.05);
+  border-left: 3px solid var(--accent);
+  padding: 24px 28px;
+  border-radius: 0 8px 8px 0;
+}
+.hero-intro p {
+  color: var(--text-secondary);
+  font-size: 1rem;
+  line-height: 1.8;
+  margin: 0 0 14px;
+  max-width: none;
+}
+.hero-intro p:last-child { margin-bottom: 0; }
+.hero-intro em { color: var(--accent); font-style: italic; }
+.hero-intro strong { color: var(--accent); }
 .hero-stats {
   display: flex;
   justify-content: center;

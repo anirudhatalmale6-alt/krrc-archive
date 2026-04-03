@@ -35,7 +35,11 @@
     <div class="page active" id="page-home">
         <section class="hero">
             <h2>Kashmir <span class="gold">Research</span> &<br><span class="gold">Resource</span> Center</h2>
-            <p>A digital archive of books, research articles, and historical documents on Kashmir. Searchable with AI. Explore decades of scholarship across multiple languages.</p>
+            <div class="hero-intro">
+                <p>We live in an age of ontological politics and it has never been more urgent to have access to information than now. Yet, more and more of it ends up being behind paywalls or ends up getting wiped from public memory just because some find it inconvenient. All this is especially true for Kashmir.</p>
+                <p>It is, therefore, imperative for Kashmiris to take ownership of as much information about Kashmir as possible and disseminate it to those who seek it as effectively as possible.</p>
+                <p>Almost a 100 years ago the cry <em>Kashmir for Kashmiris</em> was raised by some, in that spirit if anyone should be a custodian of information and data on Kashmir it should be Kashmiris. So, <strong>Kashmiri data in Kashmiri hands!</strong></p>
+            </div>
             <div class="search-container">
                 <div class="search-bar">
                     <input type="text" id="hero-search" placeholder="Search the archive... (books, authors, topics)" onkeydown="if(event.key==='Enter')heroSearch()">
@@ -112,19 +116,21 @@
     <!-- ===== UPLOAD PAGE ===== -->
     <div class="page" id="page-upload" style="margin-top:64px;">
         <div class="container page-section">
-            <h2 class="section-title" style="text-align:center;">Upload Document</h2>
-            <p class="section-subtitle" style="text-align:center;">Contribute to the Kashmir archive. Upload books, research articles, and documents in PDF format.</p>
+            <h2 class="section-title" style="text-align:center;">Upload to Archive</h2>
+            <p class="section-subtitle" style="text-align:center;">Contribute to the Kashmir archive. Upload books, articles, documents, images, audio, and video files. Multiple files supported.</p>
             <div class="upload-form">
                 <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
                     <i class="fas fa-cloud-upload-alt"></i>
-                    <p>Drop a PDF file here or click to browse</p>
-                    <p style="font-size:0.75rem;margin-top:8px;">Max file size: 100MB</p>
-                    <input type="file" id="file-input" accept=".pdf" style="display:none;" onchange="handleFileSelect(this)">
+                    <p>Drop files here or click to browse</p>
+                    <p style="font-size:0.75rem;margin-top:8px;">Supported: PDF, DOC/DOCX, images (JPG, PNG), audio (MP3, WAV), video (MP4, AVI) - Max 100MB each</p>
+                    <input type="file" id="file-input" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.tiff,.bmp,.mp3,.wav,.ogg,.flac,.mp4,.avi,.mkv,.mov,.webm" style="display:none;" multiple onchange="handleFileSelect(this)">
                 </div>
+                <div id="file-list" class="hidden" style="padding:12px;background:var(--bg-card);border-radius:8px;margin-bottom:8px;"></div>
                 <div id="file-info" class="hidden" style="text-align:center;padding:12px;background:var(--bg-card);border-radius:8px;"></div>
+                <p style="text-align:center;font-size:0.85rem;color:var(--text-muted);margin-bottom:8px;"><i class="fas fa-info-circle"></i> Metadata fields below are optional. The AI will auto-categorise files after upload.</p>
                 <div class="form-row">
-                    <div class="form-group"><label>Title *</label><input type="text" id="upload-title" placeholder="Book or article title"></div>
-                    <div class="form-group"><label>Author</label><input type="text" id="upload-author" placeholder="Author name(s)"></div>
+                    <div class="form-group"><label>Title</label><input type="text" id="upload-title" placeholder="Book or article title (optional for mass upload)"></div>
+                    <div class="form-group"><label>Author / Writer</label><input type="text" id="upload-author" placeholder="Author name(s)"></div>
                 </div>
                 <div class="form-row">
                     <div class="form-group"><label>Subject / Topic</label><input type="text" id="upload-subject" placeholder="e.g., Kashmir History"></div>
@@ -140,6 +146,9 @@
                             <option value="pamphlet">Political Pamphlet</option>
                             <option value="magazine">Magazine</option>
                             <option value="archival">Archival Data</option>
+                            <option value="image">Photograph / Image</option>
+                            <option value="audio">Audio Recording</option>
+                            <option value="video">Video</option>
                             <option value="other">Other</option>
                         </select>
                     </div>
@@ -175,7 +184,8 @@
                 <button class="btn btn-primary" onclick="uploadDocument()" style="align-self:center;padding:14px 40px;font-size:1rem;" id="upload-btn">
                     <i class="fas fa-upload"></i> Upload to Archive
                 </button>
-                <p style="text-align:center;font-size:0.8rem;color:var(--text-muted);">Uploaded documents will be reviewed by an admin before appearing in the archive.</p>
+                <div id="upload-progress" class="hidden" style="margin-top:12px;"></div>
+                <p style="text-align:center;font-size:0.8rem;color:var(--text-muted);">Uploaded files will be reviewed by an admin before appearing in the archive. AI will auto-categorise content.</p>
             </div>
         </div>
     </div>
@@ -185,16 +195,23 @@
         <div class="container page-section" style="max-width:800px;">
             <h2 class="section-title">About KRRC</h2>
             <div style="color:var(--text-secondary);line-height:1.8;font-size:0.95rem;">
-                <p style="margin-bottom:16px;">The <strong style="color:var(--accent);">Kashmir Research & Resource Center (KRRC)</strong> is a digital archive dedicated to preserving and making accessible the rich scholarly heritage of Kashmir.</p>
-                <p style="margin-bottom:16px;">Our mission is to collect, digitize, and provide open access to books, research articles, manuscripts, and historical documents related to Kashmir in all its dimensions - history, culture, politics, geography, language, literature, religion, art, and more.</p>
+                <div style="background:rgba(201,169,110,0.05);border-left:3px solid var(--accent);padding:20px 24px;border-radius:0 8px 8px 0;margin-bottom:24px;">
+                    <p style="margin-bottom:12px;">We live in an age of ontological politics and it has never been more urgent to have access to information than now. Yet, more and more of it ends up being behind paywalls or ends up getting wiped from public memory just because some find it inconvenient. All this is especially true for Kashmir.</p>
+                    <p style="margin-bottom:12px;">It is, therefore, imperative for Kashmiris to take ownership of as much information about Kashmir as possible and disseminate it to those who seek it as effectively as possible.</p>
+                    <p>Almost a 100 years ago the cry <em style="color:var(--accent);">Kashmir for Kashmiris</em> was raised by some, in that spirit if anyone should be a custodian of information and data on Kashmir it should be Kashmiris. So, <strong style="color:var(--accent);">Kashmiri data in Kashmiri hands!</strong></p>
+                </div>
+                <p style="margin-bottom:16px;">The <strong style="color:var(--accent);">Kashmir Research & Resource Center (KRRC)</strong> is a digital archive dedicated to preserving and making accessible information about Kashmir - books, research articles, government reports, fact-finding documents, political pamphlets, magazines, photographs, audio, video, and archival data.</p>
                 <h3 style="font-family:var(--font-serif);margin:24px 0 12px;color:var(--text-primary);">Features</h3>
                 <ul style="list-style:none;display:flex;flex-direction:column;gap:8px;">
-                    <li><i class="fas fa-search" style="color:var(--accent);width:20px;"></i> AI-powered full-text search across all documents</li>
-                    <li><i class="fas fa-robot" style="color:var(--accent);width:20px;"></i> AI chatbot to explore and ask questions about the archive</li>
+                    <li><i class="fas fa-robot" style="color:var(--accent);width:20px;"></i> KRRC Ai - AI-powered search and chatbot for exploring the archive</li>
+                    <li><i class="fas fa-search" style="color:var(--accent);width:20px;"></i> Full-text search across all documents in multiple languages</li>
+                    <li><i class="fas fa-book" style="color:var(--accent);width:20px;"></i> Reference-only access - cites book, page, year, and author (no downloads)</li>
                     <li><i class="fas fa-globe" style="color:var(--accent);width:20px;"></i> Multi-language support (Kashmiri, Urdu, Hindi, Persian, English, and more)</li>
-                    <li><i class="fas fa-upload" style="color:var(--accent);width:20px;"></i> Community uploads with admin review</li>
-                    <li><i class="fas fa-lock" style="color:var(--accent);width:20px;"></i> Reference-only access (no downloads) to protect copyright</li>
-                    <li><i class="fas fa-tags" style="color:var(--accent);width:20px;"></i> Rich metadata and categorization for every document</li>
+                    <li><i class="fas fa-upload" style="color:var(--accent);width:20px;"></i> Mass upload with AI auto-categorisation</li>
+                    <li><i class="fas fa-server" style="color:var(--accent);width:20px;"></i> FTP access for bulk archive uploads</li>
+                    <li><i class="fas fa-file-pdf" style="color:var(--accent);width:20px;"></i> Supports PDFs, documents, images, audio, and video</li>
+                    <li><i class="fas fa-tags" style="color:var(--accent);width:20px;"></i> AI auto-categorisation and rich metadata</li>
+                    <li><i class="fas fa-user-shield" style="color:var(--accent);width:20px;"></i> Admin-approved uploads and user registration</li>
                 </ul>
                 <h3 style="font-family:var(--font-serif);margin:24px 0 12px;color:var(--text-primary);">Languages</h3>
                 <p>The archive supports documents in English, Kashmiri, Urdu, Hindi, Persian, Arabic, Punjabi, Sanskrit, Dogri, Balti, Shina, and more South Asian languages.</p>
@@ -247,18 +264,18 @@
     </div>
 
     <!-- ===== CHATBOT ===== -->
-    <button class="chatbot-fab" onclick="toggleChat()" title="Ask AI about Kashmir"><i class="fas fa-robot"></i></button>
+    <button class="chatbot-fab" onclick="toggleChat()" title="KRRC Ai"><i class="fas fa-robot"></i></button>
     <div class="chatbot-panel" id="chatbot-panel">
         <div class="chat-header">
             <i class="fas fa-robot" style="color:var(--accent);font-size:1.2rem;"></i>
             <div style="flex:1;">
-                <div style="font-weight:600;font-size:0.95rem;">KRRC AI Assistant</div>
-                <div style="font-size:0.7rem;color:var(--text-secondary);">Ask about Kashmir's history, culture, and more</div>
+                <div style="font-weight:600;font-size:0.95rem;">KRRC Ai</div>
+                <div style="font-size:0.7rem;color:var(--text-secondary);">Ask about Kashmir - references only, no downloads</div>
             </div>
             <button onclick="toggleChat()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1rem;"><i class="fas fa-times"></i></button>
         </div>
         <div class="chat-messages" id="chat-messages">
-            <div class="chat-msg bot">Welcome to the KRRC AI Assistant! I can help you explore the Kashmir archive, find documents, and answer questions about Kashmir's history, culture, politics, and more. What would you like to know?</div>
+            <div class="chat-msg bot">Welcome to KRRC Ai! I can help you explore the Kashmir archive, find documents, and answer questions about Kashmir. I provide references (book title, page, year, author) but not download links. What would you like to know?</div>
         </div>
         <div class="chat-input-row">
             <input type="text" id="chat-input" placeholder="Ask a question..." onkeydown="if(event.key==='Enter')sendChat()">

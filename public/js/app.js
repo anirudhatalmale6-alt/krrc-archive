@@ -270,17 +270,35 @@ function metaItem(label, value) {
 }
 
 // ===== UPLOAD =====
-let selectedFile = null;
+// selectedFile replaced by selectedFiles array
+
+let selectedFiles = [];
 
 function handleFileSelect(input) {
-    const file = input.files[0];
-    if (!file) return;
-    selectedFile = file;
-    document.getElementById('file-info').classList.remove('hidden');
-    document.getElementById('file-info').innerHTML = `<i class="fas fa-file-pdf" style="color:var(--accent);"></i> <strong>${escapeHtml(file.name)}</strong> (${(file.size / 1024 / 1024).toFixed(1)} MB)`;
-    // Auto-fill title from filename
-    if (!document.getElementById('upload-title').value) {
-        document.getElementById('upload-title').value = file.name.replace('.pdf', '').replace(/_/g, ' ');
+    selectedFiles = Array.from(input.files);
+    if (selectedFiles.length === 0) return;
+
+    const fileList = document.getElementById('file-list');
+    const fileInfo = document.getElementById('file-info');
+
+    if (selectedFiles.length === 1) {
+        fileList.classList.add('hidden');
+        fileInfo.classList.remove('hidden');
+        const f = selectedFiles[0];
+        const icon = f.type.startsWith('image/') ? 'fa-image' : f.type.startsWith('audio/') ? 'fa-music' : f.type.startsWith('video/') ? 'fa-video' : 'fa-file-pdf';
+        fileInfo.innerHTML = `<i class="fas ${icon}" style="color:var(--accent);"></i> <strong>${escapeHtml(f.name)}</strong> (${(f.size / 1024 / 1024).toFixed(1)} MB)`;
+        if (!document.getElementById('upload-title').value) {
+            document.getElementById('upload-title').value = f.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
+        }
+    } else {
+        fileInfo.classList.add('hidden');
+        fileList.classList.remove('hidden');
+        const totalSize = selectedFiles.reduce((s, f) => s + f.size, 0);
+        fileList.innerHTML = `<div style="margin-bottom:8px;font-weight:600;"><i class="fas fa-layer-group" style="color:var(--accent);"></i> ${selectedFiles.length} files selected (${(totalSize / 1024 / 1024).toFixed(1)} MB total)</div>` +
+            selectedFiles.map(f => {
+                const icon = f.type.startsWith('image/') ? 'fa-image' : f.type.startsWith('audio/') ? 'fa-music' : f.type.startsWith('video/') ? 'fa-video' : 'fa-file-pdf';
+                return `<div style="font-size:0.85rem;padding:2px 0;"><i class="fas ${icon}" style="color:var(--text-muted);width:16px;"></i> ${escapeHtml(f.name)} (${(f.size / 1024 / 1024).toFixed(1)} MB)</div>`;
+            }).join('');
     }
 }
 
@@ -300,47 +318,77 @@ if (dropZone) {
 }
 
 async function uploadDocument() {
-    if (!selectedFile) { showToast('Please select a PDF file', 'error'); return; }
-    const title = document.getElementById('upload-title').value.trim();
-    if (!title) { showToast('Title is required', 'error'); return; }
+    if (selectedFiles.length === 0) { showToast('Please select files to upload', 'error'); return; }
 
     const btn = document.getElementById('upload-btn');
     btn.disabled = true;
-    btn.innerHTML = '<div class="spinner"></div> Uploading & extracting text...';
+    const progressDiv = document.getElementById('upload-progress');
+    progressDiv.classList.remove('hidden');
 
-    const formData = new FormData();
-    formData.append('file', selectedFile);
-    formData.append('title', title);
-    formData.append('author', document.getElementById('upload-author').value.trim());
-    formData.append('subject', document.getElementById('upload-subject').value.trim());
-    formData.append('doc_type', document.getElementById('upload-type').value);
-    formData.append('language', document.getElementById('upload-language').value);
-    formData.append('year', document.getElementById('upload-year').value.trim());
-    formData.append('publisher', document.getElementById('upload-publisher').value.trim());
-    formData.append('publication_place', document.getElementById('upload-place').value.trim());
-    formData.append('edition', document.getElementById('upload-edition').value.trim());
-    formData.append('description', document.getElementById('upload-desc').value.trim());
-    if (user) formData.append('uploaded_by_id', user.id);
+    const sharedMeta = {
+        author: document.getElementById('upload-author').value.trim(),
+        subject: document.getElementById('upload-subject').value.trim(),
+        doc_type: document.getElementById('upload-type').value,
+        language: document.getElementById('upload-language').value,
+        year: document.getElementById('upload-year').value.trim(),
+        publisher: document.getElementById('upload-publisher').value.trim(),
+        publication_place: document.getElementById('upload-place').value.trim(),
+        edition: document.getElementById('upload-edition').value.trim(),
+        description: document.getElementById('upload-desc').value.trim()
+    };
 
-    try {
-        const res = await fetch(API + '/api/documents/upload', { method: 'POST', body: formData });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Upload failed');
-        showToast(`Uploaded! ${data.pages} pages, text ${data.text_extracted ? 'extracted' : 'not extracted'}. Pending admin review.`);
-        // Reset form
-        selectedFile = null;
-        document.getElementById('file-input').value = '';
-        document.getElementById('file-info').classList.add('hidden');
-        document.getElementById('upload-title').value = '';
-        document.getElementById('upload-author').value = '';
-        document.getElementById('upload-subject').value = '';
-        document.getElementById('upload-year').value = '';
-        document.getElementById('upload-publisher').value = '';
-        document.getElementById('upload-place').value = '';
-        document.getElementById('upload-edition').value = '';
-        document.getElementById('upload-desc').value = '';
-    } catch (err) { showToast(err.message, 'error'); }
+    if (selectedFiles.length === 1) {
+        btn.innerHTML = '<div class="spinner"></div> Uploading & processing...';
+        const formData = new FormData();
+        formData.append('file', selectedFiles[0]);
+        formData.append('title', document.getElementById('upload-title').value.trim() || selectedFiles[0].name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' '));
+        Object.entries(sharedMeta).forEach(([k, v]) => formData.append(k, v));
+        if (user) formData.append('uploaded_by_id', user.id);
 
+        try {
+            const res = await fetch(API + '/api/documents/upload', { method: 'POST', body: formData });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Upload failed');
+            showToast('Uploaded! AI will auto-categorise. Pending admin review.', 'success');
+        } catch (err) { showToast(err.message, 'error'); }
+    } else {
+        // Mass upload
+        btn.innerHTML = '<div class="spinner"></div> Uploading ' + selectedFiles.length + ' files...';
+        let uploaded = 0;
+        let failed = 0;
+
+        for (let i = 0; i < selectedFiles.length; i++) {
+            progressDiv.innerHTML = `<div style="background:var(--bg-card);padding:8px 12px;border-radius:6px;font-size:0.85rem;">Uploading ${i + 1} of ${selectedFiles.length}: ${escapeHtml(selectedFiles[i].name)}</div>`;
+            const formData = new FormData();
+            formData.append('file', selectedFiles[i]);
+            formData.append('title', selectedFiles[i].name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' '));
+            Object.entries(sharedMeta).forEach(([k, v]) => formData.append(k, v));
+            if (user) formData.append('uploaded_by_id', user.id);
+
+            try {
+                const res = await fetch(API + '/api/documents/upload', { method: 'POST', body: formData });
+                if (!res.ok) { failed++; continue; }
+                uploaded++;
+            } catch (err) { failed++; }
+        }
+        showToast(`Mass upload complete: ${uploaded} uploaded, ${failed} failed. AI will auto-categorise. Pending admin review.`, uploaded > 0 ? 'success' : 'error');
+    }
+
+    // Reset
+    selectedFiles = [];
+    document.getElementById('file-input').value = '';
+    document.getElementById('file-info').classList.add('hidden');
+    document.getElementById('file-list').classList.add('hidden');
+    progressDiv.classList.add('hidden');
+    progressDiv.innerHTML = '';
+    document.getElementById('upload-title').value = '';
+    document.getElementById('upload-author').value = '';
+    document.getElementById('upload-subject').value = '';
+    document.getElementById('upload-year').value = '';
+    document.getElementById('upload-publisher').value = '';
+    document.getElementById('upload-place').value = '';
+    document.getElementById('upload-edition').value = '';
+    document.getElementById('upload-desc').value = '';
     btn.disabled = false;
     btn.innerHTML = '<i class="fas fa-upload"></i> Upload to Archive';
 }
