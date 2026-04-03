@@ -4,6 +4,26 @@ let user = JSON.parse(localStorage.getItem('krrc_user') || 'null');
 let chatSessionId = localStorage.getItem('krrc_chat_session') || '';
 let currentPage = 'home';
 let browsePage = 1;
+let analyticsSessionId = localStorage.getItem('krrc_analytics_session') || '';
+
+// ===== ANALYTICS TRACKING =====
+function trackPageView(page) {
+    fetch(API + '/api/track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ page, path: window.location.pathname, referrer: document.referrer, sessionId: analyticsSessionId })
+    }).then(r => r.json()).then(d => {
+        if (d.sessionId) { analyticsSessionId = d.sessionId; localStorage.setItem('krrc_analytics_session', d.sessionId); }
+    }).catch(() => {});
+}
+
+// Load dynamic SEO keywords
+fetch(API + '/api/seo/keywords').then(r => r.json()).then(keywords => {
+    if (keywords.length > 0) {
+        const meta = document.getElementById('meta-keywords');
+        if (meta) meta.content = keywords.join(', ');
+    }
+}).catch(() => {});
 
 // ===== HELPERS =====
 function escapeHtml(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
@@ -58,6 +78,7 @@ function showPage(page) {
     if (navBtn) navBtn.classList.add('active');
     currentPage = page;
     window.scrollTo(0, 0);
+    trackPageView(page);
 
     if (page === 'home') loadHomePage();
     if (page === 'browse') loadBrowseOverview();
@@ -413,6 +434,8 @@ function switchAdminTab(tab) {
     else if (tab === 'documents') loadAdminDocuments();
     else if (tab === 'users') loadAdminUsers();
     else if (tab === 'categories') loadAdminCategories();
+    else if (tab === 'seo') loadAdminSEO();
+    else if (tab === 'analytics') loadAdminAnalytics();
     else if (tab === 'ftp') loadFtpImport();
 }
 
@@ -630,6 +653,163 @@ async function addCategory() {
 async function deleteCategory(id) {
     if (!confirm('Delete this category?')) return;
     try { await apiFetch('/api/admin/categories/' + id, { method: 'DELETE' }); showToast('Deleted'); loadAdminCategories(); } catch (err) { showToast(err.message, 'error'); }
+}
+
+// ===== SEO / KEYWORDS ADMIN =====
+async function loadAdminSEO() {
+    const content = document.getElementById('admin-content');
+    content.innerHTML = '<div style="text-align:center;padding:40px;"><div class="spinner"></div></div>';
+    try {
+        const [keywords, settings] = await Promise.all([
+            apiFetch('/api/admin/keywords'),
+            apiFetch('/api/admin/seo-settings')
+        ]);
+        content.innerHTML = `
+            <h2 style="font-family:var(--font-serif);margin-bottom:20px;">SEO & Keywords</h2>
+
+            <div style="background:var(--card-bg);border-radius:8px;padding:20px;margin-bottom:24px;">
+                <h3 style="margin-bottom:16px;">Site SEO Settings</h3>
+                <div style="display:grid;gap:12px;">
+                    <div><label style="font-size:0.85rem;color:var(--text-secondary);">Meta Title</label>
+                        <input type="text" id="seo-title" value="${escapeHtml(settings.seo_title || '')}" placeholder="KRRC - Kashmir Research & Resource Center" style="width:100%;"></div>
+                    <div><label style="font-size:0.85rem;color:var(--text-secondary);">Meta Description</label>
+                        <textarea id="seo-description" rows="3" style="width:100%;" placeholder="A digital archive of Kashmir-related documents...">${escapeHtml(settings.seo_description || '')}</textarea></div>
+                    <div><label style="font-size:0.85rem;color:var(--text-secondary);">Google Analytics ID (e.g. G-XXXXXXX)</label>
+                        <input type="text" id="seo-ga-id" value="${escapeHtml(settings.seo_google_analytics_id || '')}" placeholder="G-XXXXXXXXXX" style="width:100%;"></div>
+                    <div><label style="font-size:0.85rem;color:var(--text-secondary);">Google Search Console Verification Code</label>
+                        <input type="text" id="seo-gsc" value="${escapeHtml(settings.seo_google_search_console || '')}" placeholder="Verification meta tag content" style="width:100%;"></div>
+                    <button class="btn btn-accent" onclick="saveSEOSettings()" style="width:fit-content;"><i class="fas fa-save"></i> Save Settings</button>
+                </div>
+            </div>
+
+            <div style="background:var(--card-bg);border-radius:8px;padding:20px;margin-bottom:24px;">
+                <h3 style="margin-bottom:16px;">SEO Keywords <span style="color:var(--text-muted);font-size:0.85rem;">(${keywords.length})</span></h3>
+                <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:12px;">Keywords are injected into the page meta tags for search engine optimization.</p>
+                <div style="display:flex;gap:8px;margin-bottom:16px;">
+                    <input type="text" id="new-keyword" placeholder="Add a keyword..." style="flex:1;">
+                    <input type="number" id="new-keyword-priority" placeholder="Priority" style="width:80px;" min="0" max="100" value="0">
+                    <button class="btn btn-accent" onclick="addKeyword()"><i class="fas fa-plus"></i> Add</button>
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                    ${keywords.map(k => `
+                        <span style="background:var(--bg-secondary);border:1px solid var(--accent);border-radius:20px;padding:6px 14px;font-size:0.85rem;display:flex;align-items:center;gap:8px;">
+                            ${escapeHtml(k.keyword)}
+                            ${k.priority > 0 ? `<span style="color:var(--accent);font-size:0.7rem;">(${k.priority})</span>` : ''}
+                            <button onclick="deleteKeyword('${k.id}')" style="background:none;border:none;color:#ff4757;cursor:pointer;padding:0;font-size:0.8rem;"><i class="fas fa-times"></i></button>
+                        </span>
+                    `).join('')}
+                    ${keywords.length === 0 ? '<span style="color:var(--text-muted);">No keywords yet. Add some to improve SEO.</span>' : ''}
+                </div>
+            </div>
+
+            <div style="background:var(--card-bg);border-radius:8px;padding:20px;">
+                <h3 style="margin-bottom:12px;">SEO Resources</h3>
+                <div style="font-size:0.9rem;color:var(--text-secondary);line-height:1.8;">
+                    <p><i class="fas fa-link" style="color:var(--accent);margin-right:8px;"></i> Sitemap: <a href="/krrc/sitemap.xml" target="_blank" style="color:var(--accent);">/krrc/sitemap.xml</a></p>
+                    <p><i class="fas fa-robot" style="color:var(--accent);margin-right:8px;"></i> Robots.txt: <a href="/krrc/robots.txt" target="_blank" style="color:var(--accent);">/krrc/robots.txt</a></p>
+                </div>
+            </div>
+        `;
+    } catch (err) { content.innerHTML = '<div style="color:#ff4757;">Error: ' + escapeHtml(err.message) + '</div>'; }
+}
+
+async function saveSEOSettings() {
+    try {
+        await apiFetch('/api/admin/seo-settings', { method: 'POST', body: JSON.stringify({
+            seo_title: document.getElementById('seo-title').value,
+            seo_description: document.getElementById('seo-description').value,
+            google_analytics_id: document.getElementById('seo-ga-id').value,
+            google_search_console: document.getElementById('seo-gsc').value
+        })});
+        showToast('SEO settings saved');
+    } catch (err) { showToast(err.message, 'error'); }
+}
+
+async function addKeyword() {
+    const keyword = document.getElementById('new-keyword').value.trim();
+    const priority = parseInt(document.getElementById('new-keyword-priority').value) || 0;
+    if (!keyword) return;
+    try {
+        await apiFetch('/api/admin/keywords', { method: 'POST', body: JSON.stringify({ keyword, priority }) });
+        showToast('Keyword added');
+        loadAdminSEO();
+    } catch (err) { showToast(err.message, 'error'); }
+}
+
+async function deleteKeyword(id) {
+    try {
+        await apiFetch('/api/admin/keywords/' + id, { method: 'DELETE' });
+        showToast('Keyword removed');
+        loadAdminSEO();
+    } catch (err) { showToast(err.message, 'error'); }
+}
+
+// ===== ANALYTICS ADMIN =====
+async function loadAdminAnalytics() {
+    const content = document.getElementById('admin-content');
+    content.innerHTML = '<div style="text-align:center;padding:40px;"><div class="spinner"></div></div>';
+    try {
+        const data = await apiFetch('/api/admin/analytics?days=' + _analyticsDays);
+        content.innerHTML = `
+            <h2 style="font-family:var(--font-serif);margin-bottom:20px;">Analytics (Last ${data.days} Days)</h2>
+            <div style="display:flex;gap:8px;margin-bottom:20px;">
+                <button class="btn btn-sm ${data.days === 7 ? 'btn-accent' : ''}" onclick="loadAnalyticsPeriod(7)">7 Days</button>
+                <button class="btn btn-sm ${data.days === 30 ? 'btn-accent' : ''}" onclick="loadAnalyticsPeriod(30)">30 Days</button>
+                <button class="btn btn-sm ${data.days === 90 ? 'btn-accent' : ''}" onclick="loadAnalyticsPeriod(90)">90 Days</button>
+            </div>
+            <div class="stat-grid">
+                <div class="stat-card"><div class="stat-num">${data.totalViews}</div><div class="stat-label">Page Views</div></div>
+                <div class="stat-card"><div class="stat-num">${data.uniqueVisitors}</div><div class="stat-label">Unique Visitors</div></div>
+                <div class="stat-card"><div class="stat-num">${data.chatSessions}</div><div class="stat-label">Chat Sessions</div></div>
+                <div class="stat-card"><div class="stat-num">${data.chatMessages}</div><div class="stat-label">Chat Messages</div></div>
+            </div>
+
+            ${data.dailyViews.length > 0 ? `
+            <div style="background:var(--card-bg);border-radius:8px;padding:20px;margin-top:24px;">
+                <h3 style="margin-bottom:16px;">Daily Traffic</h3>
+                <div style="display:flex;align-items:flex-end;gap:4px;height:150px;overflow-x:auto;">
+                    ${data.dailyViews.map(d => {
+                        const maxViews = Math.max(...data.dailyViews.map(x => x.views), 1);
+                        const height = Math.max((d.views / maxViews) * 130, 4);
+                        return `<div style="display:flex;flex-direction:column;align-items:center;min-width:30px;" title="${d.date}: ${d.views} views, ${d.visitors} visitors">
+                            <span style="font-size:0.65rem;color:var(--text-muted);">${d.views}</span>
+                            <div style="width:20px;height:${height}px;background:var(--accent);border-radius:3px 3px 0 0;"></div>
+                            <span style="font-size:0.6rem;color:var(--text-muted);transform:rotate(-45deg);white-space:nowrap;margin-top:4px;">${d.date.substring(5)}</span>
+                        </div>`;
+                    }).join('')}
+                </div>
+            </div>` : ''}
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px;">
+                <div style="background:var(--card-bg);border-radius:8px;padding:20px;">
+                    <h3 style="margin-bottom:12px;">Top Pages</h3>
+                    ${data.pageBreakdown.length > 0 ? `<table class="admin-table"><thead><tr><th>Page</th><th>Views</th></tr></thead><tbody>
+                        ${data.pageBreakdown.map(p => `<tr><td>${escapeHtml(p.page)}</td><td>${p.views}</td></tr>`).join('')}
+                    </tbody></table>` : '<span style="color:var(--text-muted);">No data yet</span>'}
+                </div>
+                <div style="background:var(--card-bg);border-radius:8px;padding:20px;">
+                    <h3 style="margin-bottom:12px;">Browsers</h3>
+                    ${data.browsers.length > 0 ? `<table class="admin-table"><thead><tr><th>Browser</th><th>Visits</th></tr></thead><tbody>
+                        ${data.browsers.map(b => `<tr><td>${escapeHtml(b.browser)}</td><td>${b.cnt}</td></tr>`).join('')}
+                    </tbody></table>` : '<span style="color:var(--text-muted);">No data yet</span>'}
+                </div>
+            </div>
+
+            ${data.referrers.length > 0 ? `
+            <div style="background:var(--card-bg);border-radius:8px;padding:20px;margin-top:20px;">
+                <h3 style="margin-bottom:12px;">Top Referrers</h3>
+                <table class="admin-table"><thead><tr><th>Source</th><th>Visits</th></tr></thead><tbody>
+                    ${data.referrers.map(r => `<tr><td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.referrer)}</td><td>${r.cnt}</td></tr>`).join('')}
+                </tbody></table>
+            </div>` : ''}
+        `;
+    } catch (err) { content.innerHTML = '<div style="color:#ff4757;">Error: ' + escapeHtml(err.message) + '</div>'; }
+}
+
+let _analyticsDays = 30;
+async function loadAnalyticsPeriod(days) {
+    _analyticsDays = days;
+    loadAdminAnalytics();
 }
 
 // ===== FTP IMPORT =====

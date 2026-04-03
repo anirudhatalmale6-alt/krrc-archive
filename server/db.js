@@ -103,6 +103,35 @@ db.exec(`
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS seo_keywords (
+    id TEXT PRIMARY KEY,
+    keyword TEXT NOT NULL,
+    description TEXT,
+    priority INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS page_views (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    page TEXT NOT NULL,
+    path TEXT,
+    referrer TEXT,
+    user_agent TEXT,
+    ip_address TEXT,
+    country TEXT,
+    session_id TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS visitor_sessions (
+    id TEXT PRIMARY KEY,
+    ip_address TEXT,
+    user_agent TEXT,
+    first_visit DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_visit DATETIME DEFAULT CURRENT_TIMESTAMP,
+    page_count INTEGER DEFAULT 0
+  );
 `);
 
 // Create FTS5 virtual table for full-text search

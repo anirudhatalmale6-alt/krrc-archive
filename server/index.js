@@ -895,6 +895,135 @@ app.post(BASE + '/api/ai-search', async (req, res) => {
   }
 });
 
+// ===== ANALYTICS TRACKING =====
+app.post(BASE + '/api/track', (req, res) => {
+  const { page, path: pagePath, referrer } = req.body;
+  if (!page) return res.status(400).json({ error: 'Page required' });
+  const ua = req.headers['user-agent'] || '';
+  const ip = req.ip || '';
+  // Skip bots
+  if (/bot|crawl|spider|slurp/i.test(ua)) return res.json({ ok: true });
+  // Get or create session
+  const sessionId = req.body.sessionId || crypto.randomBytes(8).toString('hex');
+  let session = db.prepare('SELECT * FROM visitor_sessions WHERE id = ?').get(sessionId);
+  if (!session) {
+    db.prepare('INSERT INTO visitor_sessions (id, ip_address, user_agent, page_count) VALUES (?, ?, ?, 1)').run(sessionId, ip, ua.substring(0, 255));
+  } else {
+    db.prepare('UPDATE visitor_sessions SET last_visit = CURRENT_TIMESTAMP, page_count = page_count + 1 WHERE id = ?').run(sessionId);
+  }
+  db.prepare('INSERT INTO page_views (page, path, referrer, user_agent, ip_address, session_id) VALUES (?, ?, ?, ?, ?, ?)').run(
+    page, pagePath || '', (referrer || '').substring(0, 500), ua.substring(0, 255), ip, sessionId
+  );
+  res.json({ ok: true, sessionId });
+});
+
+// Admin analytics dashboard data
+app.get(BASE + '/api/admin/analytics', authenticateToken, requireAdmin, (req, res) => {
+  const days = parseInt(req.query.days) || 30;
+  const since = new Date(Date.now() - days * 86400000).toISOString();
+
+  const totalViews = db.prepare('SELECT COUNT(*) as cnt FROM page_views WHERE created_at >= ?').get(since).cnt;
+  const uniqueVisitors = db.prepare('SELECT COUNT(DISTINCT session_id) as cnt FROM page_views WHERE created_at >= ?').get(since).cnt;
+  const totalSessions = db.prepare('SELECT COUNT(*) as cnt FROM visitor_sessions WHERE first_visit >= ?').get(since).cnt;
+
+  // Page views by page
+  const pageBreakdown = db.prepare('SELECT page, COUNT(*) as views FROM page_views WHERE created_at >= ? GROUP BY page ORDER BY views DESC LIMIT 20').all(since);
+
+  // Views per day
+  const dailyViews = db.prepare(`SELECT DATE(created_at) as date, COUNT(*) as views, COUNT(DISTINCT session_id) as visitors
+    FROM page_views WHERE created_at >= ? GROUP BY DATE(created_at) ORDER BY date`).all(since);
+
+  // Top referrers
+  const referrers = db.prepare(`SELECT referrer, COUNT(*) as cnt FROM page_views
+    WHERE referrer != '' AND referrer IS NOT NULL AND created_at >= ? GROUP BY referrer ORDER BY cnt DESC LIMIT 10`).all(since);
+
+  // Top user agents (simplified)
+  const browsers = db.prepare(`SELECT
+    CASE
+      WHEN user_agent LIKE '%Chrome%' AND user_agent NOT LIKE '%Edg%' THEN 'Chrome'
+      WHEN user_agent LIKE '%Firefox%' THEN 'Firefox'
+      WHEN user_agent LIKE '%Safari%' AND user_agent NOT LIKE '%Chrome%' THEN 'Safari'
+      WHEN user_agent LIKE '%Edg%' THEN 'Edge'
+      ELSE 'Other'
+    END as browser, COUNT(*) as cnt
+    FROM page_views WHERE created_at >= ? GROUP BY browser ORDER BY cnt DESC`).all(since);
+
+  // Chat sessions count
+  const chatSessions = db.prepare('SELECT COUNT(*) as cnt FROM chat_sessions WHERE created_at >= ?').get(since).cnt;
+  const chatMessages = db.prepare('SELECT COUNT(*) as cnt FROM chat_messages WHERE created_at >= ?').get(since).cnt;
+
+  res.json({ totalViews, uniqueVisitors, totalSessions, pageBreakdown, dailyViews, referrers, browsers, chatSessions, chatMessages, days });
+});
+
+// ===== SEO KEYWORDS MANAGEMENT =====
+app.get(BASE + '/api/admin/keywords', authenticateToken, requireAdmin, (req, res) => {
+  const keywords = db.prepare('SELECT * FROM seo_keywords ORDER BY priority DESC, created_at').all();
+  res.json(keywords);
+});
+
+app.post(BASE + '/api/admin/keywords', authenticateToken, requireAdmin, (req, res) => {
+  const { keyword, description, priority } = req.body;
+  if (!keyword) return res.status(400).json({ error: 'Keyword required' });
+  const id = uuid();
+  db.prepare('INSERT INTO seo_keywords (id, keyword, description, priority) VALUES (?, ?, ?, ?)').run(id, keyword.trim(), description || '', priority || 0);
+  res.json({ id, keyword: keyword.trim() });
+});
+
+app.delete(BASE + '/api/admin/keywords/:id', authenticateToken, requireAdmin, (req, res) => {
+  db.prepare('DELETE FROM seo_keywords WHERE id = ?').run(req.params.id);
+  res.json({ success: true });
+});
+
+// Public SEO keywords (for meta tag injection)
+app.get(BASE + '/api/seo/keywords', (req, res) => {
+  const keywords = db.prepare('SELECT keyword FROM seo_keywords ORDER BY priority DESC').all();
+  res.json(keywords.map(k => k.keyword));
+});
+
+// SEO settings (meta description, title, etc.)
+app.get(BASE + '/api/admin/seo-settings', authenticateToken, requireAdmin, (req, res) => {
+  const settings = {};
+  const rows = db.prepare("SELECT key, value FROM platform_settings WHERE key LIKE 'seo_%'").all();
+  rows.forEach(r => { settings[r.key] = r.value; });
+  res.json(settings);
+});
+
+app.post(BASE + '/api/admin/seo-settings', authenticateToken, requireAdmin, (req, res) => {
+  const { seo_title, seo_description, seo_og_title, seo_og_description, google_analytics_id, google_search_console } = req.body;
+  const upsert = db.prepare('INSERT OR REPLACE INTO platform_settings (key, value) VALUES (?, ?)');
+  if (seo_title !== undefined) upsert.run('seo_title', seo_title);
+  if (seo_description !== undefined) upsert.run('seo_description', seo_description);
+  if (seo_og_title !== undefined) upsert.run('seo_og_title', seo_og_title);
+  if (seo_og_description !== undefined) upsert.run('seo_og_description', seo_og_description);
+  if (google_analytics_id !== undefined) upsert.run('seo_google_analytics_id', google_analytics_id);
+  if (google_search_console !== undefined) upsert.run('seo_google_search_console', google_search_console);
+  res.json({ success: true });
+});
+
+// ===== SITEMAP =====
+app.get(BASE + '/sitemap.xml', (req, res) => {
+  const baseUrl = 'https://skylarkmedia.se/krrc';
+  const cats = db.prepare('SELECT name FROM categories').all();
+  let xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>${baseUrl}/</loc><changefreq>daily</changefreq><priority>1.0</priority></url>
+  <url><loc>${baseUrl}/browse</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>${baseUrl}/chat</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>${baseUrl}/about</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>
+  <url><loc>${baseUrl}/upload</loc><changefreq>monthly</changefreq><priority>0.4</priority></url>
+</urlset>`;
+  res.type('application/xml').send(xml);
+});
+
+// ===== ROBOTS.TXT =====
+app.get(BASE + '/robots.txt', (req, res) => {
+  res.type('text/plain').send(`User-agent: *
+Allow: /krrc/
+Disallow: /krrc/api/
+Disallow: /krrc/uploads/
+Sitemap: https://skylarkmedia.se/krrc/sitemap.xml`);
+});
+
 // SPA routes
 app.get(BASE + '/*', (req, res) => {
   if (!req.path.includes('/api/') && !req.path.includes('/uploads/')) {

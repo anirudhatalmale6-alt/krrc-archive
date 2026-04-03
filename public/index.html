@@ -4,10 +4,46 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>KRRC - Kashmir Research & Resource Center</title>
+    <meta name="description" content="Kashmir Research & Resource Center - A digital archive of books, research articles, reports, and documents on Kashmir. AI-powered research assistant for Kashmir studies.">
+    <meta name="keywords" id="meta-keywords" content="Kashmir, KRRC, Kashmir Research, Kashmir Archive, Kashmir Documents, Kashmir Books, Kashmir Reports, Kashmir Studies, Azad Kashmir, Human Rights Kashmir">
+    <meta name="author" content="KRRC - Kashmir Research & Resource Center">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://skylarkmedia.se/krrc/">
+
+    <!-- Open Graph / Social Media -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="KRRC - Kashmir Research & Resource Center">
+    <meta property="og:description" content="A digital archive of books, research articles, reports, and documents on Kashmir. AI-powered research assistant.">
+    <meta property="og:url" content="https://skylarkmedia.se/krrc/">
+    <meta property="og:image" content="https://skylarkmedia.se/krrc/images/krrc-logo.png">
+    <meta property="og:site_name" content="KRRC">
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="KRRC - Kashmir Research & Resource Center">
+    <meta name="twitter:description" content="Digital archive of Kashmir-related documents with AI-powered research assistant.">
+    <meta name="twitter:image" content="https://skylarkmedia.se/krrc/images/krrc-logo.png">
+
     <link rel="icon" type="image/png" href="/krrc/images/krrc-logo.png">
+    <link rel="apple-touch-icon" href="/krrc/images/krrc-logo.png">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Inter:wght@300;400;500;600;700&display=swap">
     <link rel="stylesheet" href="/krrc/css/style.css">
+
+    <!-- Structured Data -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "ResearchOrganization",
+        "name": "Kashmir Research & Resource Center",
+        "alternateName": "KRRC",
+        "url": "https://skylarkmedia.se/krrc/",
+        "logo": "https://skylarkmedia.se/krrc/images/krrc-logo.png",
+        "description": "A digital archive dedicated to preserving and providing access to Kashmir-related books, research articles, reports, and historical documents.",
+        "sameAs": [],
+        "knowsAbout": ["Kashmir", "Kashmir Studies", "Kashmir History", "Kashmir Politics", "Human Rights in Kashmir"]
+    }
+    </script>
 </head>
 <body>
 
@@ -201,6 +237,8 @@
                 <button onclick="switchAdminTab('documents')"><i class="fas fa-file-pdf"></i> Documents</button>
                 <button onclick="switchAdminTab('users')"><i class="fas fa-users"></i> Users</button>
                 <button onclick="switchAdminTab('categories')"><i class="fas fa-tags"></i> Categories</button>
+                <button onclick="switchAdminTab('seo')"><i class="fas fa-search"></i> SEO / Keywords</button>
+                <button onclick="switchAdminTab('analytics')"><i class="fas fa-chart-line"></i> Analytics</button>
                 <button onclick="switchAdminTab('ftp')"><i class="fas fa-server"></i> FTP Import</button>
             </div>
             <div class="admin-content" id="admin-content">
