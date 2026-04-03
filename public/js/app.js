@@ -7,6 +7,7 @@ let browsePage = 1;
 
 // ===== HELPERS =====
 function escapeHtml(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function formatDocType(t) { const labels = { book: 'Book', article: 'Research Article', 'think-tank-report': 'Think Tank Report', 'hr-report': 'HR Org Report', 'govt-report': 'Govt Report', 'fact-finding': 'Fact-Finding', pamphlet: 'Pamphlet', magazine: 'Magazine', archival: 'Archival', other: 'Other' }; return labels[t] || t || 'Book'; }
 
 async function apiFetch(path, opts = {}) {
     const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
@@ -190,7 +191,8 @@ function renderDocList(container, docs) {
         return;
     }
     container.innerHTML = docs.map(d => {
-        const typeIcon = d.doc_type === 'article' ? 'fa-file-lines' : d.doc_type === 'manuscript' ? 'fa-scroll' : 'fa-book';
+        const typeIcons = { article: 'fa-file-lines', magazine: 'fa-newspaper', pamphlet: 'fa-bullhorn', archival: 'fa-archive', 'govt-report': 'fa-landmark', 'hr-report': 'fa-hand-holding-heart', 'think-tank-report': 'fa-building-columns', 'fact-finding': 'fa-magnifying-glass-location' };
+        const typeIcon = typeIcons[d.doc_type] || 'fa-book';
         return `<div class="doc-card" onclick="showDocument('${d.id}')">
             <div class="doc-icon"><i class="fas ${typeIcon}"></i></div>
             <div class="doc-info">
@@ -200,7 +202,7 @@ function renderDocList(container, docs) {
                     ${d.year ? `<span><i class="fas fa-calendar"></i> ${escapeHtml(d.year)}</span>` : ''}
                     ${d.language ? `<span><i class="fas fa-globe"></i> ${escapeHtml(d.language)}</span>` : ''}
                     ${d.page_count ? `<span><i class="fas fa-file"></i> ${d.page_count} pages</span>` : ''}
-                    <span class="badge badge-${d.doc_type === 'article' ? 'article' : 'book'}">${d.doc_type || 'book'}</span>
+                    <span class="badge badge-article">${formatDocType(d.doc_type)}</span>
                 </div>
                 ${d.snippet ? `<div class="doc-desc">${d.snippet}</div>` : d.description ? `<div class="doc-desc">${escapeHtml(d.description).substring(0, 200)}</div>` : ''}
             </div>
@@ -382,6 +384,7 @@ function switchAdminTab(tab) {
     else if (tab === 'documents') loadAdminDocuments();
     else if (tab === 'users') loadAdminUsers();
     else if (tab === 'categories') loadAdminCategories();
+    else if (tab === 'ftp') loadFtpImport();
 }
 
 async function loadAdminDashboard() {
@@ -583,6 +586,60 @@ async function addCategory() {
 async function deleteCategory(id) {
     if (!confirm('Delete this category?')) return;
     try { await apiFetch('/api/admin/categories/' + id, { method: 'DELETE' }); showToast('Deleted'); loadAdminCategories(); } catch (err) { showToast(err.message, 'error'); }
+}
+
+// ===== FTP IMPORT =====
+async function loadFtpImport() {
+    const content = document.getElementById('admin-content');
+    content.innerHTML = '<div style="text-align:center;padding:40px;"><div class="spinner"></div></div>';
+    try {
+        const files = await apiFetch('/api/admin/ftp-files');
+        const newFiles = files.filter(f => !f.imported);
+        content.innerHTML = `
+            <h2 style="font-family:var(--font-serif);margin-bottom:10px;">FTP Import</h2>
+            <p style="color:var(--text-muted);margin-bottom:20px;">Upload PDF files via FTP, then import them here. FTP files are automatically detected.</p>
+            <div style="background:var(--bg-card);padding:16px;border-radius:8px;margin-bottom:20px;border:1px solid var(--border);">
+                <h4 style="margin-bottom:8px;">FTP Connection Details</h4>
+                <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:0.9rem;">
+                    <span style="color:var(--text-muted);">Host:</span><span>94.72.110.114</span>
+                    <span style="color:var(--text-muted);">Username:</span><span>krrc-ftp</span>
+                    <span style="color:var(--text-muted);">Password:</span><span>KRRCUpload2026!</span>
+                    <span style="color:var(--text-muted);">Port:</span><span>21 (FTP)</span>
+                </div>
+            </div>
+            ${newFiles.length > 0 ? `<button class="btn btn-primary" onclick="importAllFtp()" style="margin-bottom:16px;"><i class="fas fa-download"></i> Import All New Files (${newFiles.length})</button>` : ''}
+            <div style="margin-bottom:8px;font-size:0.85rem;color:var(--text-muted);">${files.length} files found in FTP folder</div>
+            <table class="admin-table">
+                <thead><tr><th>Filename</th><th>Size</th><th>Date</th><th>Status</th><th>Action</th></tr></thead>
+                <tbody>${files.length === 0 ? '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted);">No PDF files in FTP folder. Upload files via FTP first.</td></tr>' :
+                    files.map(f => `<tr>
+                        <td>${escapeHtml(f.name)}</td>
+                        <td>${(f.size / 1024 / 1024).toFixed(1)} MB</td>
+                        <td>${new Date(f.modified).toLocaleDateString()}</td>
+                        <td>${f.imported ? '<span style="color:#4caf50;">Imported</span>' : '<span style="color:var(--accent);">New</span>'}</td>
+                        <td>${f.imported ? '-' : `<button class="btn btn-sm" onclick="importFtpFile('${escapeHtml(f.name)}')"><i class="fas fa-download"></i> Import</button>`}</td>
+                    </tr>`).join('')}
+                </tbody>
+            </table>`;
+    } catch (err) { content.innerHTML = '<p style="color:#f44336;">Error: ' + escapeHtml(err.message) + '</p>'; }
+}
+
+async function importFtpFile(filename) {
+    try {
+        showToast('Importing ' + filename + '...', 'info');
+        const result = await apiFetch('/api/admin/ftp-import', { method: 'POST', body: JSON.stringify({ filename }) });
+        showToast('Imported: ' + result.title + ' (' + result.pages + ' pages)', 'success');
+        loadFtpImport();
+    } catch (err) { showToast(err.message, 'error'); }
+}
+
+async function importAllFtp() {
+    try {
+        showToast('Importing all files...', 'info');
+        const result = await apiFetch('/api/admin/ftp-import-all', { method: 'POST' });
+        showToast('Imported ' + result.imported + ' files, skipped ' + result.skipped, 'success');
+        loadFtpImport();
+    } catch (err) { showToast(err.message, 'error'); }
 }
 
 // ===== INIT =====

@@ -302,6 +302,128 @@ app.get(BASE + '/api/admin/stats', authenticateToken, requireAdmin, (req, res) =
   res.json({ totalDocs, approvedDocs, pendingDocs, totalUsers, pendingUsers, totalSearches, languages, docTypes, recentSearches });
 });
 
+// ===== FTP IMPORT =====
+const ftpDir = path.join(__dirname, '../ftp-uploads');
+fs.mkdirSync(ftpDir, { recursive: true });
+
+app.get(BASE + '/api/admin/ftp-files', authenticateToken, requireAdmin, (req, res) => {
+  try {
+    const files = fs.readdirSync(ftpDir)
+      .filter(f => f.toLowerCase().endsWith('.pdf'))
+      .map(f => {
+        const stat = fs.statSync(path.join(ftpDir, f));
+        const alreadyImported = db.prepare('SELECT id FROM documents WHERE original_name = ?').get(f);
+        return { name: f, size: stat.size, modified: stat.mtime, imported: !!alreadyImported };
+      })
+      .sort((a, b) => b.modified - a.modified);
+    res.json(files);
+  } catch (e) { res.json([]); }
+});
+
+app.post(BASE + '/api/admin/ftp-import', authenticateToken, requireAdmin, async (req, res) => {
+  const { filename } = req.body;
+  if (!filename) return res.status(400).json({ error: 'Filename required' });
+
+  const srcPath = path.join(ftpDir, filename);
+  if (!fs.existsSync(srcPath)) return res.status(404).json({ error: 'File not found in FTP folder' });
+
+  // Check if already imported
+  const existing = db.prepare('SELECT id FROM documents WHERE original_name = ?').get(filename);
+  if (existing) return res.status(400).json({ error: 'File already imported' });
+
+  // Copy to uploads dir
+  const newFilename = uuid() + '.pdf';
+  const destPath = path.join(uploadsDir, newFilename);
+  fs.copyFileSync(srcPath, destPath);
+  const stat = fs.statSync(destPath);
+
+  // Extract text
+  let extractedText = '';
+  let pageCount = 0;
+  try {
+    const pdfParse = require('pdf-parse');
+    const dataBuffer = fs.readFileSync(destPath);
+    const pdfData = await pdfParse(dataBuffer);
+    extractedText = pdfData.text || '';
+    pageCount = pdfData.numpages || 0;
+  } catch (err) {
+    console.error('[FTP Import] PDF parse error:', err.message);
+  }
+
+  const id = uuid();
+  const title = filename.replace(/\.pdf$/i, '').replace(/[-_]/g, ' ');
+
+  db.prepare(`INSERT INTO documents (id, title, subject, author, publication_place, publisher, language, year, edition, doc_type, description, filename, original_name, file_size, page_count, extracted_text, text_indexed, is_approved, uploaded_by)
+    VALUES (?, ?, '', '', '', '', 'English', '', '', 'book', '', ?, ?, ?, ?, ?, ?, 0, ?)`).run(
+    id, title, newFilename, filename, stat.size, pageCount, extractedText, extractedText ? 1 : 0, req.user.id
+  );
+
+  // Update FTS index
+  if (extractedText) {
+    try {
+      const doc = db.prepare('SELECT rowid, title, author, subject, description, extracted_text, tags FROM documents WHERE id = ?').get(id);
+      if (doc) {
+        db.prepare('INSERT INTO documents_fts(rowid, title, author, subject, description, extracted_text, tags) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+          doc.rowid, doc.title, doc.author, doc.subject, doc.description, doc.extracted_text, doc.tags
+        );
+      }
+    } catch (e) { console.error('[FTS] Index error:', e.message); }
+  }
+
+  res.json({ id, title, pages: pageCount, text_extracted: !!extractedText, file_size: stat.size });
+});
+
+app.post(BASE + '/api/admin/ftp-import-all', authenticateToken, requireAdmin, async (req, res) => {
+  const files = fs.readdirSync(ftpDir).filter(f => f.toLowerCase().endsWith('.pdf'));
+  const results = [];
+
+  for (const filename of files) {
+    const existing = db.prepare('SELECT id FROM documents WHERE original_name = ?').get(filename);
+    if (existing) { results.push({ filename, status: 'skipped', reason: 'already imported' }); continue; }
+
+    const srcPath = path.join(ftpDir, filename);
+    const newFilename = uuid() + '.pdf';
+    const destPath = path.join(uploadsDir, newFilename);
+    fs.copyFileSync(srcPath, destPath);
+    const stat = fs.statSync(destPath);
+
+    let extractedText = '';
+    let pageCount = 0;
+    try {
+      const pdfParse = require('pdf-parse');
+      const dataBuffer = fs.readFileSync(destPath);
+      const pdfData = await pdfParse(dataBuffer);
+      extractedText = pdfData.text || '';
+      pageCount = pdfData.numpages || 0;
+    } catch (err) {
+      console.error('[FTP Import] PDF parse error for ' + filename + ':', err.message);
+    }
+
+    const id = uuid();
+    const title = filename.replace(/\.pdf$/i, '').replace(/[-_]/g, ' ');
+
+    db.prepare(`INSERT INTO documents (id, title, subject, author, publication_place, publisher, language, year, edition, doc_type, description, filename, original_name, file_size, page_count, extracted_text, text_indexed, is_approved, uploaded_by)
+      VALUES (?, ?, '', '', '', '', 'English', '', '', 'book', '', ?, ?, ?, ?, ?, ?, 0, ?)`).run(
+      id, title, newFilename, filename, stat.size, pageCount, extractedText, extractedText ? 1 : 0, req.user.id
+    );
+
+    if (extractedText) {
+      try {
+        const doc = db.prepare('SELECT rowid, title, author, subject, description, extracted_text, tags FROM documents WHERE id = ?').get(id);
+        if (doc) {
+          db.prepare('INSERT INTO documents_fts(rowid, title, author, subject, description, extracted_text, tags) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+            doc.rowid, doc.title, doc.author, doc.subject, doc.description, doc.extracted_text, doc.tags
+          );
+        }
+      } catch (e) { /* ignore */ }
+    }
+
+    results.push({ filename, status: 'imported', id, pages: pageCount, text_extracted: !!extractedText });
+  }
+
+  res.json({ total: files.length, imported: results.filter(r => r.status === 'imported').length, skipped: results.filter(r => r.status === 'skipped').length, results });
+});
+
 // Categories CRUD
 app.get(BASE + '/api/categories', (req, res) => {
   const cats = db.prepare('SELECT c.*, (SELECT COUNT(*) FROM document_categories dc JOIN documents d ON d.id = dc.document_id WHERE dc.category_id = c.id AND d.is_approved = 1) as doc_count FROM categories c ORDER BY c.sort_order').all();

@@ -128,24 +128,18 @@ const catCount = db.prepare('SELECT COUNT(*) as cnt FROM categories').get();
 if (catCount.cnt === 0) {
   const insertCat = db.prepare('INSERT INTO categories (id, name, description, sort_order) VALUES (?, ?, ?, ?)');
   const cats = [
-    ['History', 'Historical documents and books about Kashmir', 1],
-    ['Politics', 'Political documents, agreements, and analysis', 2],
-    ['Culture', 'Kashmiri culture, traditions, and heritage', 3],
-    ['Literature', 'Kashmiri literature, poetry, and prose', 4],
-    ['Language', 'Kashmiri language studies and linguistics', 5],
-    ['Religion', 'Religious texts and studies', 6],
-    ['Geography', 'Maps, geographical studies, and travelogues', 7],
-    ['Law', 'Legal documents, treaties, and constitutional matters', 8],
-    ['Economy', 'Economic studies and reports', 9],
-    ['Art & Architecture', 'Kashmiri art, crafts, and architectural heritage', 10],
-    ['Education', 'Educational materials and academic research', 11],
-    ['Human Rights', 'Human rights reports and documentation', 12],
-    ['Manuscripts', 'Historical manuscripts and rare texts', 13],
-    ['Photographs', 'Historical and contemporary photographs', 14],
-    ['Audio & Film', 'Audio recordings and film archives', 15],
+    ['Books', 'Published books on Kashmir', 1],
+    ['Research Articles', 'Academic and scholarly research articles', 2],
+    ['Think Tank Reports', 'Reports by think tanks and policy institutes', 3],
+    ['HR Organisation Reports', 'Reports by human rights organisations', 4],
+    ['Government Reports', 'Official government documents and reports', 5],
+    ['Fact-Finding Mission Documents', 'Reports from fact-finding missions and investigations', 6],
+    ['Political Pamphlets', 'Political pamphlets, leaflets, and manifestos', 7],
+    ['Magazines', 'Magazine issues, periodicals, and journals', 8],
+    ['Archival Data', 'Historical archival materials, records, and primary sources', 9],
   ];
   cats.forEach(([name, desc, order]) => insertCat.run(uuid(), name, desc, order));
-  console.log('Seeded 15 default categories');
+  console.log('Seeded 9 default categories');
 }
 
 module.exports = db;
