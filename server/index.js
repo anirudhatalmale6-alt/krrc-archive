@@ -421,6 +421,39 @@ app.get(BASE + '/api/admin/documents', authenticateToken, requireAdmin, (req, re
   res.json(docs.map(d => ({ ...d, extracted_text: undefined, tags: JSON.parse(d.tags || '[]') })));
 });
 
+// Re-categorise document with AI
+app.post(BASE + '/api/admin/documents/:id/recategorise', authenticateToken, requireAdmin, async (req, res) => {
+  const doc = db.prepare('SELECT id, title, extracted_text, filename FROM documents WHERE id = ?').get(req.params.id);
+  if (!doc) return res.status(404).json({ error: 'Not found' });
+
+  // Try epub metadata first
+  const ext = (doc.filename || '').toLowerCase();
+  if (ext.endsWith('.epub')) {
+    try {
+      const epubPath = path.join(uploadsDir, doc.filename);
+      const result = await extractEpubText(epubPath);
+      if (result.title) {
+        const updates = { title: result.title };
+        if (result.author) updates.author = result.author;
+        if (result.language) updates.language = result.language;
+        const setClauses = Object.keys(updates).map(k => k + ' = ?');
+        setClauses.push('updated_at = CURRENT_TIMESTAMP');
+        db.prepare('UPDATE documents SET ' + setClauses.join(', ') + ' WHERE id = ?').run(...Object.values(updates), doc.id);
+        return res.json({ success: true, source: 'epub_metadata', updates });
+      }
+    } catch (e) { /* fall through to AI */ }
+  }
+
+  // Fall back to AI categorisation
+  if (doc.extracted_text) {
+    await aiCategorise(doc.id, doc.title, doc.extracted_text);
+    const updated = db.prepare('SELECT title, author, doc_type, subject, language, year FROM documents WHERE id = ?').get(doc.id);
+    return res.json({ success: true, source: 'ai', updates: updated });
+  }
+
+  res.json({ success: false, message: 'No text available for AI categorisation' });
+});
+
 // Approve document
 app.post(BASE + '/api/admin/documents/:id/approve', authenticateToken, requireAdmin, (req, res) => {
   db.prepare('UPDATE documents SET is_approved = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(req.params.id);

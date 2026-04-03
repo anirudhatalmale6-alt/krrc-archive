@@ -491,15 +491,30 @@ async function loadAdminDocuments() {
                     <td>${d.page_count || 0}</td>
                     <td>${d.is_approved ? '<span class="badge badge-approved">Approved</span>' : '<span class="badge badge-pending">Pending</span>'}</td>
                     <td style="white-space:nowrap;">
-                        ${!d.is_approved ? `<button class="btn btn-sm btn-primary" onclick="approveDoc('${d.id}')"><i class="fas fa-check"></i></button>` : ''}
-                        <button class="btn btn-sm" onclick="editDocMeta('${d.id}')"><i class="fas fa-edit"></i></button>
-                        <button class="btn btn-sm btn-danger" onclick="deleteDoc('${d.id}')"><i class="fas fa-trash"></i></button>
+                        ${!d.is_approved ? `<button class="btn btn-sm btn-primary" onclick="approveDoc('${d.id}')" title="Approve"><i class="fas fa-check"></i></button>` : ''}
+                        <button class="btn btn-sm" onclick="recategoriseDoc('${d.id}')" title="AI Re-categorise"><i class="fas fa-robot"></i></button>
+                        <button class="btn btn-sm" onclick="editDocMeta('${d.id}')" title="Edit"><i class="fas fa-edit"></i></button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteDoc('${d.id}')" title="Delete"><i class="fas fa-trash"></i></button>
                     </td>
                 </tr>`).join('')}
                 </tbody>
             </table></div>
         `;
     } catch (err) { content.innerHTML = '<div style="color:#ff4757;">Error: ' + escapeHtml(err.message) + '</div>'; }
+}
+
+async function recategoriseDoc(id) {
+    showToast('Running AI categorisation...', 'info');
+    try {
+        const result = await apiFetch('/api/admin/documents/' + id + '/recategorise', { method: 'POST' });
+        if (result.success) {
+            const src = result.source === 'epub_metadata' ? 'EPUB metadata' : 'AI';
+            showToast('Re-categorised using ' + src + '. Title: ' + (result.updates.title || 'unchanged'), 'success');
+            loadAdminDocuments();
+        } else {
+            showToast(result.message || 'Could not categorise', 'error');
+        }
+    } catch (err) { showToast(err.message, 'error'); }
 }
 
 async function approveDoc(id) {
