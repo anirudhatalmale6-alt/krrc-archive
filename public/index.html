@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>KRRC - Kashmir Research & Resource Center</title>
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%23c9a96e' rx='15' width='100' height='100'/><text y='.75em' x='50' text-anchor='middle' font-size='55' font-weight='bold' fill='%23000'>K</text></svg>">
+    <link rel="icon" type="image/png" href="/krrc/images/krrc-logo.png">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Inter:wght@300;400;500;600;700&display=swap">
     <link rel="stylesheet" href="/krrc/css/style.css">
@@ -14,13 +14,14 @@
     <!-- Navbar -->
     <nav class="navbar">
         <div class="nav-brand" onclick="showPage('home')">
-            <div class="nav-brand-icon">K</div>
+            <div class="nav-brand-icon"><img src="/krrc/images/krrc-logo.png" alt="KRRC"></div>
             <div>
                 <h1>KRRC</h1>
                 <span>Kashmir Research & Resource Center</span>
             </div>
         </div>
-        <div class="nav-links">
+        <button class="hamburger" onclick="toggleMobileMenu()" aria-label="Menu"><i class="fas fa-bars" id="hamburger-icon"></i></button>
+        <div class="nav-links" id="nav-links">
             <button class="nav-link active" onclick="showPage('home')">Home</button>
             <button class="nav-link" onclick="showPage('browse')">Browse</button>
             <button class="nav-link" onclick="showPage('upload')">Upload</button>
@@ -264,10 +265,10 @@
     </div>
 
     <!-- ===== CHATBOT ===== -->
-    <button class="chatbot-fab" onclick="toggleChat()" title="KRRC Ai"><i class="fas fa-robot"></i></button>
+    <button class="chatbot-fab" onclick="toggleChat()" title="KRRC Ai"><img src="/krrc/images/krrc-logo.png" alt="KRRC Ai" style="width:28px;height:28px;border-radius:50%;"></button>
     <div class="chatbot-panel" id="chatbot-panel">
         <div class="chat-header">
-            <i class="fas fa-robot" style="color:var(--accent);font-size:1.2rem;"></i>
+            <img src="/krrc/images/krrc-logo.png" alt="KRRC" style="width:32px;height:32px;border-radius:50%;">
             <div style="flex:1;">
                 <div style="font-weight:600;font-size:0.95rem;">KRRC Ai</div>
                 <div style="font-size:0.7rem;color:var(--text-secondary);">Ask about Kashmir - references only, no downloads</div>

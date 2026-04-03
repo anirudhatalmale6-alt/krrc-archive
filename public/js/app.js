@@ -27,7 +27,22 @@ function showToast(msg, type = 'success') {
 }
 
 // ===== NAVIGATION =====
+function toggleMobileMenu() {
+    const nav = document.getElementById('nav-links');
+    const icon = document.getElementById('hamburger-icon');
+    nav.classList.toggle('open');
+    icon.className = nav.classList.contains('open') ? 'fas fa-times' : 'fas fa-bars';
+}
+
+function closeMobileMenu() {
+    const nav = document.getElementById('nav-links');
+    const icon = document.getElementById('hamburger-icon');
+    if (nav) { nav.classList.remove('open'); }
+    if (icon) { icon.className = 'fas fa-bars'; }
+}
+
 function showPage(page) {
+    closeMobileMenu();
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     document.getElementById('page-' + page).classList.add('active');
     document.querySelectorAll('.nav-link').forEach(n => n.classList.remove('active'));
