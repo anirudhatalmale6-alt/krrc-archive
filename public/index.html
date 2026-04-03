@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KRRC - Kashmir Research & Resource Center</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%23c9a96e' rx='15' width='100' height='100'/><text y='.75em' x='50' text-anchor='middle' font-size='55' font-weight='bold' fill='%23000'>K</text></svg>">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Inter:wght@300;400;500;600;700&display=swap">
+    <link rel="stylesheet" href="/krrc/css/style.css">
+</head>
+<body>
+
+    <!-- Navbar -->
+    <nav class="navbar">
+        <div class="nav-brand" onclick="showPage('home')">
+            <div class="nav-brand-icon">K</div>
+            <div>
+                <h1>KRRC</h1>
+                <span>Kashmir Research & Resource Center</span>
+            </div>
+        </div>
+        <div class="nav-links">
+            <button class="nav-link active" onclick="showPage('home')">Home</button>
+            <button class="nav-link" onclick="showPage('browse')">Browse</button>
+            <button class="nav-link" onclick="showPage('upload')">Upload</button>
+            <button class="nav-link" onclick="showPage('about')">About</button>
+            <button class="nav-link" id="nav-login-btn" onclick="showLoginModal()">Login</button>
+            <button class="nav-link hidden" id="nav-admin-btn" onclick="showPage('admin')"><i class="fas fa-cog"></i> Admin</button>
+            <button class="nav-link hidden" id="nav-logout-btn" onclick="logout()">Logout</button>
+        </div>
+    </nav>
+
+    <!-- ===== HOME PAGE ===== -->
+    <div class="page active" id="page-home">
+        <section class="hero">
+            <h2>Kashmir <span class="gold">Research</span> &<br><span class="gold">Resource</span> Center</h2>
+            <p>A digital archive of books, research articles, and historical documents on Kashmir. Searchable with AI. Explore decades of scholarship across multiple languages.</p>
+            <div class="search-container">
+                <div class="search-bar">
+                    <input type="text" id="hero-search" placeholder="Search the archive... (books, authors, topics)" onkeydown="if(event.key==='Enter')heroSearch()">
+                    <button onclick="heroSearch()"><i class="fas fa-search"></i> Search</button>
+                </div>
+            </div>
+            <div class="hero-stats" id="hero-stats">
+                <div class="hero-stat"><div class="num" id="stat-docs">0</div><div class="label">Documents</div></div>
+                <div class="hero-stat"><div class="num" id="stat-pages">0</div><div class="label">Pages</div></div>
+                <div class="hero-stat"><div class="num" id="stat-languages">0</div><div class="label">Languages</div></div>
+                <div class="hero-stat"><div class="num" id="stat-categories">0</div><div class="label">Categories</div></div>
+            </div>
+        </section>
+
+        <div class="container page-section">
+            <h2 class="section-title">Browse by Category</h2>
+            <p class="section-subtitle">Explore the archive through thematic categories</p>
+            <div class="cat-grid" id="home-categories"></div>
+        </div>
+
+        <div class="container page-section">
+            <h2 class="section-title">Recently Added</h2>
+            <p class="section-subtitle">Latest additions to the archive</p>
+            <div class="doc-list" id="home-recent"></div>
+        </div>
+    </div>
+
+    <!-- ===== BROWSE/SEARCH PAGE ===== -->
+    <div class="page" id="page-browse" style="margin-top:64px;">
+        <div class="container page-section">
+            <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:24px;">
+                <h2 class="section-title" style="flex:1;margin:0;">Archive</h2>
+                <div class="search-bar" style="max-width:400px;border-width:1px;">
+                    <input type="text" id="browse-search" placeholder="Search..." onkeydown="if(event.key==='Enter')browseSearch()">
+                    <button onclick="browseSearch()" style="padding:10px 20px;"><i class="fas fa-search"></i></button>
+                </div>
+            </div>
+            <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px;" id="browse-filters">
+                <select id="filter-category" onchange="loadBrowseDocs()" style="width:auto;min-width:140px;"><option value="">All Categories</option></select>
+                <select id="filter-language" onchange="loadBrowseDocs()" style="width:auto;min-width:120px;"><option value="">All Languages</option></select>
+                <select id="filter-type" onchange="loadBrowseDocs()" style="width:auto;min-width:120px;">
+                    <option value="">All Types</option>
+                    <option value="book">Books</option>
+                    <option value="article">Articles</option>
+                    <option value="report">Reports</option>
+                    <option value="manuscript">Manuscripts</option>
+                    <option value="thesis">Theses</option>
+                    <option value="other">Other</option>
+                </select>
+                <select id="filter-sort" onchange="loadBrowseDocs()" style="width:auto;min-width:120px;">
+                    <option value="newest">Newest First</option>
+                    <option value="oldest">Oldest First</option>
+                    <option value="title">Title A-Z</option>
+                    <option value="author">Author A-Z</option>
+                </select>
+            </div>
+            <div id="browse-ai-answer" class="hidden" style="background:var(--accent-light);border:1px solid var(--accent);border-radius:8px;padding:16px;margin-bottom:20px;"></div>
+            <div class="doc-list" id="browse-results">
+                <div style="text-align:center;padding:40px;color:var(--text-muted);"><div class="spinner"></div><br>Loading...</div>
+            </div>
+            <div class="pagination" id="browse-pagination"></div>
+        </div>
+    </div>
+
+    <!-- ===== DOCUMENT DETAIL PAGE ===== -->
+    <div class="page" id="page-document" style="margin-top:0;">
+        <div class="doc-detail" id="document-detail"></div>
+    </div>
+
+    <!-- ===== UPLOAD PAGE ===== -->
+    <div class="page" id="page-upload" style="margin-top:64px;">
+        <div class="container page-section">
+            <h2 class="section-title" style="text-align:center;">Upload Document</h2>
+            <p class="section-subtitle" style="text-align:center;">Contribute to the Kashmir archive. Upload books, research articles, and documents in PDF format.</p>
+            <div class="upload-form">
+                <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
+                    <i class="fas fa-cloud-upload-alt"></i>
+                    <p>Drop a PDF file here or click to browse</p>
+                    <p style="font-size:0.75rem;margin-top:8px;">Max file size: 100MB</p>
+                    <input type="file" id="file-input" accept=".pdf" style="display:none;" onchange="handleFileSelect(this)">
+                </div>
+                <div id="file-info" class="hidden" style="text-align:center;padding:12px;background:var(--bg-card);border-radius:8px;"></div>
+                <div class="form-row">
+                    <div class="form-group"><label>Title *</label><input type="text" id="upload-title" placeholder="Book or article title"></div>
+                    <div class="form-group"><label>Author</label><input type="text" id="upload-author" placeholder="Author name(s)"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Subject / Topic</label><input type="text" id="upload-subject" placeholder="e.g., Kashmir History"></div>
+                    <div class="form-group">
+                        <label>Document Type</label>
+                        <select id="upload-type">
+                            <option value="book">Book</option>
+                            <option value="article">Research Article</option>
+                            <option value="report">Report</option>
+                            <option value="manuscript">Manuscript</option>
+                            <option value="thesis">Thesis / Dissertation</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Language</label>
+                        <select id="upload-language">
+                            <option value="English">English</option>
+                            <option value="Kashmiri">Kashmiri</option>
+                            <option value="Urdu">Urdu</option>
+                            <option value="Hindi">Hindi</option>
+                            <option value="Persian">Persian</option>
+                            <option value="Arabic">Arabic</option>
+                            <option value="Punjabi">Punjabi</option>
+                            <option value="Sanskrit">Sanskrit</option>
+                            <option value="Dogri">Dogri</option>
+                            <option value="Balti">Balti</option>
+                            <option value="Shina">Shina</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div class="form-group"><label>Year of Publication</label><input type="text" id="upload-year" placeholder="e.g., 1947"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Publisher</label><input type="text" id="upload-publisher" placeholder="Publisher name"></div>
+                    <div class="form-group"><label>Publication Place</label><input type="text" id="upload-place" placeholder="e.g., Srinagar"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Edition</label><input type="text" id="upload-edition" placeholder="e.g., 2nd Edition"></div>
+                </div>
+                <div class="form-group"><label>Description</label><textarea id="upload-desc" placeholder="Brief description of the content..." rows="3"></textarea></div>
+                <button class="btn btn-primary" onclick="uploadDocument()" style="align-self:center;padding:14px 40px;font-size:1rem;" id="upload-btn">
+                    <i class="fas fa-upload"></i> Upload to Archive
+                </button>
+                <p style="text-align:center;font-size:0.8rem;color:var(--text-muted);">Uploaded documents will be reviewed by an admin before appearing in the archive.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== ABOUT PAGE ===== -->
+    <div class="page" id="page-about" style="margin-top:64px;">
+        <div class="container page-section" style="max-width:800px;">
+            <h2 class="section-title">About KRRC</h2>
+            <div style="color:var(--text-secondary);line-height:1.8;font-size:0.95rem;">
+                <p style="margin-bottom:16px;">The <strong style="color:var(--accent);">Kashmir Research & Resource Center (KRRC)</strong> is a digital archive dedicated to preserving and making accessible the rich scholarly heritage of Kashmir.</p>
+                <p style="margin-bottom:16px;">Our mission is to collect, digitize, and provide open access to books, research articles, manuscripts, and historical documents related to Kashmir in all its dimensions - history, culture, politics, geography, language, literature, religion, art, and more.</p>
+                <h3 style="font-family:var(--font-serif);margin:24px 0 12px;color:var(--text-primary);">Features</h3>
+                <ul style="list-style:none;display:flex;flex-direction:column;gap:8px;">
+                    <li><i class="fas fa-search" style="color:var(--accent);width:20px;"></i> AI-powered full-text search across all documents</li>
+                    <li><i class="fas fa-robot" style="color:var(--accent);width:20px;"></i> AI chatbot to explore and ask questions about the archive</li>
+                    <li><i class="fas fa-globe" style="color:var(--accent);width:20px;"></i> Multi-language support (Kashmiri, Urdu, Hindi, Persian, English, and more)</li>
+                    <li><i class="fas fa-upload" style="color:var(--accent);width:20px;"></i> Community uploads with admin review</li>
+                    <li><i class="fas fa-lock" style="color:var(--accent);width:20px;"></i> Reference-only access (no downloads) to protect copyright</li>
+                    <li><i class="fas fa-tags" style="color:var(--accent);width:20px;"></i> Rich metadata and categorization for every document</li>
+                </ul>
+                <h3 style="font-family:var(--font-serif);margin:24px 0 12px;color:var(--text-primary);">Languages</h3>
+                <p>The archive supports documents in English, Kashmiri, Urdu, Hindi, Persian, Arabic, Punjabi, Sanskrit, Dogri, Balti, Shina, and more South Asian languages.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== ADMIN PAGE ===== -->
+    <div class="page" id="page-admin">
+        <div class="admin-layout">
+            <div class="admin-sidebar">
+                <button class="active" onclick="switchAdminTab('dashboard')"><i class="fas fa-chart-bar"></i> Dashboard</button>
+                <button onclick="switchAdminTab('documents')"><i class="fas fa-file-pdf"></i> Documents</button>
+                <button onclick="switchAdminTab('users')"><i class="fas fa-users"></i> Users</button>
+                <button onclick="switchAdminTab('categories')"><i class="fas fa-tags"></i> Categories</button>
+            </div>
+            <div class="admin-content" id="admin-content">
+                <div style="text-align:center;padding:40px;color:var(--text-muted);"><div class="spinner"></div></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== LOGIN MODAL ===== -->
+    <div class="modal-overlay" id="login-modal">
+        <div class="modal">
+            <h3><i class="fas fa-lock" style="color:var(--accent);"></i> Login</h3>
+            <div class="form-group" style="margin-bottom:12px;"><label>Email</label><input type="email" id="login-email" placeholder="admin@krrc.local"></div>
+            <div class="form-group" style="margin-bottom:16px;"><label>Password</label><input type="password" id="login-password" placeholder="Password" onkeydown="if(event.key==='Enter')doLogin()"></div>
+            <div style="display:flex;gap:8px;">
+                <button class="btn btn-primary" onclick="doLogin()" style="flex:1;">Login</button>
+                <button class="btn" onclick="hideLoginModal()">Cancel</button>
+            </div>
+            <p style="text-align:center;margin-top:12px;font-size:0.8rem;color:var(--text-muted);">Don't have an account? <a href="#" onclick="showRegisterModal()">Register</a></p>
+        </div>
+    </div>
+
+    <!-- ===== REGISTER MODAL ===== -->
+    <div class="modal-overlay" id="register-modal">
+        <div class="modal">
+            <h3><i class="fas fa-user-plus" style="color:var(--accent);"></i> Register</h3>
+            <div class="form-group" style="margin-bottom:12px;"><label>Name</label><input type="text" id="reg-name" placeholder="Your full name"></div>
+            <div class="form-group" style="margin-bottom:12px;"><label>Email</label><input type="email" id="reg-email" placeholder="your@email.com"></div>
+            <div class="form-group" style="margin-bottom:16px;"><label>Password</label><input type="password" id="reg-password" placeholder="Choose a password"></div>
+            <div style="display:flex;gap:8px;">
+                <button class="btn btn-primary" onclick="doRegister()" style="flex:1;">Register</button>
+                <button class="btn" onclick="hideRegisterModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== CHATBOT ===== -->
+    <button class="chatbot-fab" onclick="toggleChat()" title="Ask AI about Kashmir"><i class="fas fa-robot"></i></button>
+    <div class="chatbot-panel" id="chatbot-panel">
+        <div class="chat-header">
+            <i class="fas fa-robot" style="color:var(--accent);font-size:1.2rem;"></i>
+            <div style="flex:1;">
+                <div style="font-weight:600;font-size:0.95rem;">KRRC AI Assistant</div>
+                <div style="font-size:0.7rem;color:var(--text-secondary);">Ask about Kashmir's history, culture, and more</div>
+            </div>
+            <button onclick="toggleChat()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1rem;"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="chat-messages" id="chat-messages">
+            <div class="chat-msg bot">Welcome to the KRRC AI Assistant! I can help you explore the Kashmir archive, find documents, and answer questions about Kashmir's history, culture, politics, and more. What would you like to know?</div>
+        </div>
+        <div class="chat-input-row">
+            <input type="text" id="chat-input" placeholder="Ask a question..." onkeydown="if(event.key==='Enter')sendChat()">
+            <button onclick="sendChat()"><i class="fas fa-paper-plane"></i></button>
+        </div>
+    </div>
+
+    <!-- ===== TOAST ===== -->
+    <div id="toast" class="toast hidden"></div>
+
+    <footer class="footer" id="main-footer">
+        KRRC - Kashmir Research & Resource Center &copy; 2026. Preserving Kashmir's scholarly heritage.
+    </footer>
+
+    <script src="/krrc/js/app.js"></script>
+</body>
+</html>
