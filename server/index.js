@@ -568,6 +568,23 @@ app.post(BASE + '/api/admin/users/:id/approve', authenticateToken, requireAdmin,
   res.json({ success: true });
 });
 
+app.post(BASE + '/api/admin/users/:id/reset-password', authenticateToken, requireAdmin, (req, res) => {
+  const { newPassword } = req.body;
+  if (!newPassword || newPassword.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+  const user = db.prepare('SELECT id FROM users WHERE id = ?').get(req.params.id);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  const hash = bcrypt.hashSync(newPassword, 12);
+  db.prepare('UPDATE users SET password = ? WHERE id = ?').run(hash, req.params.id);
+  res.json({ success: true });
+});
+
+app.post(BASE + '/api/admin/users/:id/role', authenticateToken, requireAdmin, (req, res) => {
+  const { role } = req.body;
+  if (!['member', 'admin'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
+  db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, req.params.id);
+  res.json({ success: true });
+});
+
 app.delete(BASE + '/api/admin/users/:id', authenticateToken, requireAdmin, (req, res) => {
   db.prepare('DELETE FROM users WHERE id = ? AND role != ?').run(req.params.id, 'admin');
   res.json({ success: true });

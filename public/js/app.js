@@ -595,20 +595,65 @@ async function loadAdminUsers() {
                 <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Joined</th><th>Actions</th></tr></thead>
                 <tbody>
                 ${users.map(u => `<tr>
-                    <td>${escapeHtml(u.name)}</td>
+                    <td><strong>${escapeHtml(u.name)}</strong></td>
                     <td>${escapeHtml(u.email)}</td>
-                    <td>${u.role}</td>
+                    <td>
+                        ${u.role === 'admin' ? '<span class="badge badge-book">Admin</span>' :
+                        `<select onchange="changeUserRole('${u.id}', this.value)" style="width:auto;padding:4px 8px;font-size:0.8rem;">
+                            <option value="member" ${u.role === 'member' ? 'selected' : ''}>Member</option>
+                            <option value="admin">Admin</option>
+                        </select>`}
+                    </td>
                     <td>${u.is_approved ? '<span class="badge badge-approved">Approved</span>' : '<span class="badge badge-pending">Pending</span>'}</td>
                     <td>${new Date(u.created_at).toLocaleDateString()}</td>
-                    <td>
-                        ${!u.is_approved ? `<button class="btn btn-sm btn-primary" onclick="approveUser('${u.id}')"><i class="fas fa-check"></i></button>` : ''}
-                        ${u.role !== 'admin' ? `<button class="btn btn-sm btn-danger" onclick="deleteUser('${u.id}')"><i class="fas fa-trash"></i></button>` : ''}
+                    <td style="display:flex;gap:4px;flex-wrap:wrap;">
+                        ${!u.is_approved ? `<button class="btn btn-sm" style="background:#2ed573;color:#fff;" onclick="approveUser('${u.id}')" title="Approve"><i class="fas fa-check"></i></button>` : ''}
+                        <button class="btn btn-sm" onclick="showResetPassword('${u.id}', '${escapeHtml(u.name)}')" title="Reset Password"><i class="fas fa-key"></i></button>
+                        ${u.role !== 'admin' ? `<button class="btn btn-sm" style="background:#ff4757;color:#fff;" onclick="deleteUser('${u.id}')" title="Delete"><i class="fas fa-trash"></i></button>` : ''}
                     </td>
                 </tr>`).join('')}
                 </tbody>
             </table>
+
+            <div id="reset-password-panel" class="hidden" style="background:var(--card-bg);border-radius:8px;padding:20px;margin-top:20px;border:1px solid var(--accent);">
+                <h3 style="margin-bottom:12px;"><i class="fas fa-key" style="color:var(--accent);"></i> Reset Password for <span id="reset-user-name"></span></h3>
+                <input type="hidden" id="reset-user-id">
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <input type="password" id="reset-new-password" placeholder="New password (min 8 chars)" style="flex:1;">
+                    <button class="btn btn-accent" onclick="resetPassword()"><i class="fas fa-save"></i> Reset</button>
+                    <button class="btn btn-sm" onclick="document.getElementById('reset-password-panel').classList.add('hidden')"><i class="fas fa-times"></i></button>
+                </div>
+                <p style="font-size:0.8rem;color:var(--text-muted);margin-top:8px;">Password must be at least 8 characters with uppercase, lowercase, and a number.</p>
+            </div>
         `;
     } catch (err) { content.innerHTML = '<div style="color:#ff4757;">Error: ' + escapeHtml(err.message) + '</div>'; }
+}
+
+function showResetPassword(id, name) {
+    document.getElementById('reset-password-panel').classList.remove('hidden');
+    document.getElementById('reset-user-id').value = id;
+    document.getElementById('reset-user-name').textContent = name;
+    document.getElementById('reset-new-password').value = '';
+    document.getElementById('reset-new-password').focus();
+}
+
+async function resetPassword() {
+    const id = document.getElementById('reset-user-id').value;
+    const newPassword = document.getElementById('reset-new-password').value;
+    if (!newPassword || newPassword.length < 8) { showToast('Password must be at least 8 characters', 'error'); return; }
+    try {
+        await apiFetch('/api/admin/users/' + id + '/reset-password', { method: 'POST', body: JSON.stringify({ newPassword }) });
+        showToast('Password reset successfully');
+        document.getElementById('reset-password-panel').classList.add('hidden');
+    } catch (err) { showToast(err.message, 'error'); }
+}
+
+async function changeUserRole(id, role) {
+    try {
+        await apiFetch('/api/admin/users/' + id + '/role', { method: 'POST', body: JSON.stringify({ role }) });
+        showToast('Role updated to ' + role);
+        loadAdminUsers();
+    } catch (err) { showToast(err.message, 'error'); }
 }
 
 async function approveUser(id) {
