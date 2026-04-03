@@ -101,7 +101,7 @@
         <div class="container page-section" style="text-align:center;">
             <h2 class="section-title">Access the Archive</h2>
             <p class="section-subtitle">Use KRRC Ai to explore our collection. Ask questions about Kashmir and receive answers with full document references.</p>
-            <button class="btn btn-accent" onclick="showPage('chat')" style="margin-top:16px;font-size:1.1rem;padding:14px 32px;"><i class="fas fa-robot"></i> Ask KRRC Ai</button>
+            <button class="btn btn-accent" onclick="openChatbot()" style="margin-top:16px;font-size:1.1rem;padding:14px 32px;"><i class="fas fa-robot"></i> Ask KRRC Ai</button>
         </div>
     </div>
 
@@ -113,7 +113,7 @@
             <div class="cat-grid" id="browse-categories"></div>
             <div style="text-align:center;margin-top:32px;">
                 <p style="color:var(--text-secondary);margin-bottom:16px;">To search and access information from our archive, ask KRRC Ai. The AI will answer your questions with proper document references and citations.</p>
-                <button class="btn btn-accent" onclick="showPage('chat')" style="font-size:1.1rem;padding:14px 32px;"><i class="fas fa-robot"></i> Ask KRRC Ai</button>
+                <button class="btn btn-accent" onclick="openChatbot()" style="font-size:1.1rem;padding:14px 32px;"><i class="fas fa-robot"></i> Ask KRRC Ai</button>
             </div>
         </div>
     </div>
@@ -211,11 +211,22 @@
                                 <option value="Bodo">Bodo</option>
                                 <option value="Santali">Santali</option>
                             </optgroup>
+                            <optgroup label="Nordic">
+                                <option value="Swedish">Swedish</option>
+                                <option value="Danish">Danish</option>
+                                <option value="Norwegian">Norwegian</option>
+                            </optgroup>
                             <optgroup label="Other">
                                 <option value="Turkish">Turkish</option>
                                 <option value="French">French</option>
+                                <option value="German">German</option>
                                 <option value="Russian">Russian</option>
                                 <option value="Chinese">Chinese</option>
+                                <option value="Japanese">Japanese</option>
+                                <option value="Portuguese">Portuguese</option>
+                                <option value="Spanish">Spanish</option>
+                                <option value="Italian">Italian</option>
+                                <option value="Dutch">Dutch</option>
                                 <option value="Other">Other</option>
                             </optgroup>
                         </select>

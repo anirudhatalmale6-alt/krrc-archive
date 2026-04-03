@@ -818,12 +818,29 @@ app.post(BASE + '/api/chat', chatLimiter, async (req, res) => {
           entry += `Year: ${d.year || 'N/A'}\n`;
           entry += `Language: ${d.language || 'N/A'}\n`;
           entry += `Type: ${d.doc_type || 'N/A'}\n`;
-          entry += `Pages: ${d.page_count || 'N/A'}\n`;
+          entry += `Total Pages: ${d.page_count || 'N/A'}\n`;
           if (d.subject) entry += `Subject: ${d.subject}\n`;
           if (d.text_excerpt) {
-            // Clean up extracted text
+            // Split text into approximate pages and add page markers
             const cleanText = d.text_excerpt.replace(/\n{3,}/g, '\n\n').replace(/\s{3,}/g, ' ').trim();
-            entry += `\nContent excerpt:\n${cleanText}\n`;
+            const totalPages = d.page_count || 1;
+            const charsPerPage = Math.max(Math.floor(cleanText.length / Math.max(totalPages, 1)), 500);
+            let paged = '\nContent with approximate page references:\n';
+            let pos = 0;
+            let pageNum = 1;
+            while (pos < cleanText.length && pageNum <= 20) {
+              const end = Math.min(pos + charsPerPage, cleanText.length);
+              // Try to break at a sentence boundary
+              let breakAt = end;
+              if (end < cleanText.length) {
+                const nearEnd = cleanText.lastIndexOf('. ', end);
+                if (nearEnd > pos + charsPerPage * 0.7) breakAt = nearEnd + 2;
+              }
+              paged += `[Page ~${pageNum}] ${cleanText.substring(pos, breakAt).trim()}\n\n`;
+              pos = breakAt;
+              pageNum++;
+            }
+            entry += paged;
           }
           return entry;
         }).join('\n');
@@ -844,15 +861,17 @@ app.post(BASE + '/api/chat', chatLimiter, async (req, res) => {
 
 CRITICAL INSTRUCTIONS:
 1. You MUST use the archive documents provided below to answer questions. When archive documents are provided, READ their content excerpts carefully and base your answers on them.
-2. For EVERY claim or piece of information you provide, cite the specific source document using this format:
-   (Source: "Document Title" by Author, Year)
-3. If the archive contains relevant information, synthesise it into a clear answer with proper citations.
-4. NEVER say "I have documents but cannot access them" - you CAN access them, they are provided below.
-5. NEVER provide download links, file URLs, or offer to share/send documents.
-6. You provide REFERENCES ONLY - like a scholar citing sources.
-7. If no archive documents are relevant to the question, say so honestly and explain what topics the archive does cover.
-8. Be scholarly, accurate, and respectful of all perspectives on Kashmir.
-9. When quoting or paraphrasing from document content, indicate the document you are drawing from.
+2. For EVERY claim or piece of information you provide, cite the specific source with page numbers using this format:
+   (Source: "Document Title" by Author, Year, p. X)
+   Or for a range: (Source: "Document Title" by Author, Year, pp. X-Y)
+3. The document content below includes [Page ~N] markers. Use these to provide approximate page references in your citations.
+4. If the archive contains relevant information, synthesise it into a clear answer with proper citations including page numbers.
+5. NEVER say "I have documents but cannot access them" - you CAN access them, they are provided below.
+6. NEVER provide download links, file URLs, or offer to share/send documents.
+7. You provide REFERENCES ONLY - like a scholar citing sources, always with page numbers.
+8. If no archive documents are relevant to the question, say so honestly and explain what topics the archive does cover.
+9. Be scholarly, accurate, and respectful of all perspectives on Kashmir.
+10. When quoting or paraphrasing from document content, always indicate the document and page number you are drawing from.
 ${contextDocs}`,
         messages: history.map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.content }))
       })

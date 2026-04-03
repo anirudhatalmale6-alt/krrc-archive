@@ -142,7 +142,7 @@ async function loadHomePage() {
         const cats = await fetch(API + '/api/categories').then(r => r.json());
         const grid = document.getElementById('home-categories');
         grid.innerHTML = cats.map(c => `
-            <div class="cat-card" onclick="showPage('chat')">
+            <div class="cat-card" onclick="openChatbot()">
                 <h3>${escapeHtml(c.name)}</h3>
                 <div class="count">${c.doc_count || 0} documents</div>
             </div>
@@ -168,7 +168,7 @@ async function loadBrowseOverview() {
         const cats = await fetch(API + '/api/categories').then(r => r.json());
         const grid = document.getElementById('browse-categories');
         grid.innerHTML = cats.map(c => `
-            <div class="cat-card" onclick="showPage('chat')">
+            <div class="cat-card" onclick="openChatbot()">
                 <h3>${escapeHtml(c.name)}</h3>
                 <div class="count">${c.doc_count || 0} documents</div>
             </div>
@@ -179,12 +179,18 @@ async function loadBrowseOverview() {
 function heroSearch() {
     const q = document.getElementById('hero-search').value.trim();
     if (!q) return;
-    showPage('chat');
-    // Pre-fill the chatbot with the search query
+    // Open the chatbot panel and send the search as a chat message
+    const panel = document.getElementById('chatbot-panel');
+    if (!panel.classList.contains('open')) panel.classList.add('open');
     setTimeout(() => {
         const input = document.getElementById('chat-input');
         if (input) { input.value = q; sendChat(); }
     }, 200);
+}
+
+function openChatbot() {
+    const panel = document.getElementById('chatbot-panel');
+    if (!panel.classList.contains('open')) panel.classList.add('open');
 }
 
 function renderDocList(container, docs) {
