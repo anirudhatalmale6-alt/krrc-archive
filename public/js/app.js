@@ -594,7 +594,7 @@ async function saveDocEdit(id) {
         const perspIds = Array.from(perspCheckboxes).filter(c => c.checked).map(c => c.value);
         await apiFetch('/api/admin/documents/' + id + '/perspectives', {
             method: 'POST',
-            body: JSON.stringify({ perspectiveIds: perspIds })
+            body: JSON.stringify({ perspective_ids: perspIds })
         });
         hideLoginModal();
         resetLoginModal();
