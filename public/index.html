@@ -62,6 +62,7 @@
             <button class="nav-link" onclick="showPage('browse')">Browse</button>
             <button class="nav-link" onclick="showPage('upload')">Upload</button>
             <button class="nav-link" onclick="showPage('tutorial')">Tutorial</button>
+            <button class="nav-link" onclick="showPage('policy')">Policy</button>
             <button class="nav-link" onclick="showPage('about')">About</button>
             <button class="nav-link" id="nav-login-btn" onclick="showLoginModal()">Login</button>
             <button class="nav-link hidden" id="nav-admin-btn" onclick="showPage('admin')"><i class="fas fa-cog"></i> Admin</button>
@@ -330,6 +331,16 @@
         </div>
     </div>
 
+    <!-- ===== POLICY PAGE ===== -->
+    <div class="page" id="page-policy" style="margin-top:64px;">
+        <div class="container page-section" style="max-width:900px;">
+            <h2 class="section-title">Policy, Aims & Objectives</h2>
+            <p class="section-subtitle">Understanding perspectives on Kashmir through our archive</p>
+            <div id="policy-perspectives" style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-bottom:32px;"></div>
+            <div id="policy-content" style="display:grid;gap:24px;"></div>
+        </div>
+    </div>
+
     <!-- ===== ABOUT PAGE ===== -->
     <div class="page" id="page-about" style="margin-top:64px;">
         <div class="container page-section" style="max-width:800px;">
@@ -367,6 +378,8 @@
                 <button onclick="switchAdminTab('documents')"><i class="fas fa-file-pdf"></i> Documents</button>
                 <button onclick="switchAdminTab('users')"><i class="fas fa-users"></i> Users</button>
                 <button onclick="switchAdminTab('categories')"><i class="fas fa-tags"></i> Categories</button>
+                <button onclick="switchAdminTab('perspectives')"><i class="fas fa-eye"></i> Perspectives</button>
+                <button onclick="switchAdminTab('policies')"><i class="fas fa-scroll"></i> Policies</button>
                 <button onclick="switchAdminTab('tutorials')"><i class="fas fa-graduation-cap"></i> Tutorials</button>
                 <button onclick="switchAdminTab('seo')"><i class="fas fa-search"></i> SEO / Keywords</button>
                 <button onclick="switchAdminTab('analytics')"><i class="fas fa-chart-line"></i> Analytics</button>

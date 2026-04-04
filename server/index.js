@@ -809,9 +809,14 @@ app.post(BASE + '/api/chat', chatLimiter, async (req, res) => {
     }
 
     if (searchResults.length > 0) {
+      // Fetch perspective labels for all found documents
+      const getPersps = db.prepare('SELECT p.name FROM perspectives p JOIN document_perspectives dp ON dp.perspective_id = p.id WHERE dp.document_id = ?');
+
       contextDocs = '\n\n=== KRRC ARCHIVE DOCUMENTS ===\n' +
-        'Below are relevant documents from the archive. Use these to answer the user\'s question with specific citations.\n\n' +
+        'Below are relevant documents from the archive. Use these to answer the user\'s question with specific citations.\n' +
+        'Documents may have perspective labels (Indian, Pakistani, Kashmiri, International) - when relevant, mention which perspective a document represents.\n\n' +
         searchResults.map((d, i) => {
+          const docPersps = getPersps.all(d.id).map(p => p.name);
           let entry = `--- DOCUMENT ${i + 1} ---\n`;
           entry += `Title: ${d.title}\n`;
           entry += `Author: ${d.author || 'Unknown'}\n`;
@@ -819,6 +824,7 @@ app.post(BASE + '/api/chat', chatLimiter, async (req, res) => {
           entry += `Language: ${d.language || 'N/A'}\n`;
           entry += `Type: ${d.doc_type || 'N/A'}\n`;
           entry += `Total Pages: ${d.page_count || 'N/A'}\n`;
+          if (docPersps.length > 0) entry += `Perspective: ${docPersps.join(', ')}\n`;
           if (d.subject) entry += `Subject: ${d.subject}\n`;
           if (d.text_excerpt) {
             // Split text into approximate pages and add page markers
@@ -872,6 +878,7 @@ CRITICAL INSTRUCTIONS:
 8. If no archive documents are relevant to the question, say so honestly and explain what topics the archive does cover.
 9. Be scholarly, accurate, and respectful of all perspectives on Kashmir.
 10. When quoting or paraphrasing from document content, always indicate the document and page number you are drawing from.
+11. Documents may be tagged with perspectives (Indian, Pakistani, Kashmiri, International). When relevant, mention which perspective a cited document represents, e.g., "(Indian Perspective)" or "(Kashmiri Perspective)". This helps users understand the viewpoint of the source.
 ${contextDocs}`,
         messages: history.map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.content }))
       })
@@ -1033,6 +1040,109 @@ app.post(BASE + '/api/admin/seo-settings', authenticateToken, requireAdmin, (req
   if (seo_og_description !== undefined) upsert.run('seo_og_description', seo_og_description);
   if (google_analytics_id !== undefined) upsert.run('seo_google_analytics_id', google_analytics_id);
   if (google_search_console !== undefined) upsert.run('seo_google_search_console', google_search_console);
+  res.json({ success: true });
+});
+
+// ===== PERSPECTIVES =====
+// Public: get all perspectives
+app.get(BASE + '/api/perspectives', (req, res) => {
+  const persps = db.prepare('SELECT * FROM perspectives ORDER BY sort_order').all();
+  res.json(persps);
+});
+
+// Public: get documents by perspective
+app.get(BASE + '/api/perspectives/:slug/stats', (req, res) => {
+  const persp = db.prepare('SELECT * FROM perspectives WHERE slug = ?').get(req.params.slug);
+  if (!persp) return res.status(404).json({ error: 'Perspective not found' });
+  const docCount = db.prepare('SELECT COUNT(*) as cnt FROM document_perspectives dp JOIN documents d ON d.id = dp.document_id WHERE dp.perspective_id = ? AND d.is_approved = 1').get(persp.id).cnt;
+  res.json({ ...persp, doc_count: docCount });
+});
+
+// Admin: manage perspectives
+app.post(BASE + '/api/admin/perspectives', authenticateToken, requireAdmin, (req, res) => {
+  const { name, description, color } = req.body;
+  if (!name) return res.status(400).json({ error: 'Name required' });
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const id = uuid();
+  const maxOrder = db.prepare('SELECT MAX(sort_order) as m FROM perspectives').get().m || 0;
+  db.prepare('INSERT INTO perspectives (id, name, slug, description, color, sort_order) VALUES (?, ?, ?, ?, ?, ?)').run(id, name.trim(), slug, description || '', color || '#c9a96e', maxOrder + 1);
+  res.json({ id, name: name.trim(), slug });
+});
+
+app.put(BASE + '/api/admin/perspectives/:id', authenticateToken, requireAdmin, (req, res) => {
+  const { name, description, color } = req.body;
+  const existing = db.prepare('SELECT * FROM perspectives WHERE id = ?').get(req.params.id);
+  if (!existing) return res.status(404).json({ error: 'Not found' });
+  const slug = name ? name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') : existing.slug;
+  db.prepare('UPDATE perspectives SET name = ?, slug = ?, description = ?, color = ? WHERE id = ?').run(
+    (name || existing.name).trim(), slug, description !== undefined ? description : existing.description, color || existing.color, req.params.id
+  );
+  res.json({ success: true });
+});
+
+app.delete(BASE + '/api/admin/perspectives/:id', authenticateToken, requireAdmin, (req, res) => {
+  db.prepare('DELETE FROM document_perspectives WHERE perspective_id = ?').run(req.params.id);
+  db.prepare('DELETE FROM policies WHERE perspective_id = ?').run(req.params.id);
+  db.prepare('DELETE FROM perspectives WHERE id = ?').run(req.params.id);
+  res.json({ success: true });
+});
+
+// Admin: assign perspective to document
+app.post(BASE + '/api/admin/documents/:id/perspectives', authenticateToken, requireAdmin, (req, res) => {
+  const { perspective_ids } = req.body;
+  if (!Array.isArray(perspective_ids)) return res.status(400).json({ error: 'perspective_ids array required' });
+  db.prepare('DELETE FROM document_perspectives WHERE document_id = ?').run(req.params.id);
+  const insert = db.prepare('INSERT INTO document_perspectives (document_id, perspective_id) VALUES (?, ?)');
+  perspective_ids.forEach(pid => insert.run(req.params.id, pid));
+  res.json({ success: true });
+});
+
+// Get perspectives for a document
+app.get(BASE + '/api/documents/:id/perspectives', (req, res) => {
+  const persps = db.prepare('SELECT p.* FROM perspectives p JOIN document_perspectives dp ON dp.perspective_id = p.id WHERE dp.document_id = ? ORDER BY p.sort_order').all(req.params.id);
+  res.json(persps);
+});
+
+// ===== POLICIES =====
+// Public: get all published policies
+app.get(BASE + '/api/policies', (req, res) => {
+  const policies = db.prepare(`SELECT pol.*, p.name as perspective_name, p.slug as perspective_slug, p.color as perspective_color
+    FROM policies pol LEFT JOIN perspectives p ON p.id = pol.perspective_id
+    WHERE pol.is_published = 1 ORDER BY pol.section, pol.sort_order`).all();
+  res.json(policies);
+});
+
+// Admin: get all policies
+app.get(BASE + '/api/admin/policies', authenticateToken, requireAdmin, (req, res) => {
+  const policies = db.prepare(`SELECT pol.*, p.name as perspective_name, p.slug as perspective_slug, p.color as perspective_color
+    FROM policies pol LEFT JOIN perspectives p ON p.id = pol.perspective_id ORDER BY pol.section, pol.sort_order`).all();
+  res.json(policies);
+});
+
+app.post(BASE + '/api/admin/policies', authenticateToken, requireAdmin, (req, res) => {
+  const { title, content, section, perspective_id, sort_order } = req.body;
+  if (!title) return res.status(400).json({ error: 'Title required' });
+  const id = uuid();
+  db.prepare('INSERT INTO policies (id, perspective_id, title, content, section, sort_order) VALUES (?, ?, ?, ?, ?, ?)').run(
+    id, perspective_id || null, title.trim(), (content || '').trim(), section || 'aims', parseInt(sort_order) || 0
+  );
+  res.json({ id, title: title.trim() });
+});
+
+app.put(BASE + '/api/admin/policies/:id', authenticateToken, requireAdmin, (req, res) => {
+  const { title, content, section, perspective_id, sort_order, is_published } = req.body;
+  const existing = db.prepare('SELECT * FROM policies WHERE id = ?').get(req.params.id);
+  if (!existing) return res.status(404).json({ error: 'Not found' });
+  db.prepare('UPDATE policies SET title = ?, content = ?, section = ?, perspective_id = ?, sort_order = ?, is_published = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(
+    (title || existing.title).trim(), content !== undefined ? content.trim() : existing.content,
+    section || existing.section, perspective_id !== undefined ? perspective_id : existing.perspective_id,
+    parseInt(sort_order) || existing.sort_order, is_published !== undefined ? parseInt(is_published) : existing.is_published, req.params.id
+  );
+  res.json({ success: true });
+});
+
+app.delete(BASE + '/api/admin/policies/:id', authenticateToken, requireAdmin, (req, res) => {
+  db.prepare('DELETE FROM policies WHERE id = ?').run(req.params.id);
   res.json({ success: true });
 });
 

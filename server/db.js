@@ -117,6 +117,37 @@ db.exec(`
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
+  CREATE TABLE IF NOT EXISTS perspectives (
+    id TEXT PRIMARY KEY,
+    name TEXT UNIQUE NOT NULL,
+    slug TEXT UNIQUE NOT NULL,
+    description TEXT,
+    color TEXT DEFAULT '#c9a96e',
+    sort_order INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS document_perspectives (
+    document_id TEXT NOT NULL,
+    perspective_id TEXT NOT NULL,
+    PRIMARY KEY (document_id, perspective_id),
+    FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
+    FOREIGN KEY (perspective_id) REFERENCES perspectives(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS policies (
+    id TEXT PRIMARY KEY,
+    perspective_id TEXT,
+    title TEXT NOT NULL,
+    content TEXT,
+    section TEXT DEFAULT 'aims',
+    sort_order INTEGER DEFAULT 0,
+    is_published INTEGER DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (perspective_id) REFERENCES perspectives(id) ON DELETE SET NULL
+  );
+
   CREATE TABLE IF NOT EXISTS seo_keywords (
     id TEXT PRIMARY KEY,
     keyword TEXT NOT NULL,
@@ -182,6 +213,20 @@ if (catCount.cnt === 0) {
   ];
   cats.forEach(([name, desc, order]) => insertCat.run(uuid(), name, desc, order));
   console.log('Seeded 9 default categories');
+}
+
+// Seed default perspectives
+const perspCount = db.prepare('SELECT COUNT(*) as cnt FROM perspectives').get();
+if (perspCount.cnt === 0) {
+  const insertPersp = db.prepare('INSERT INTO perspectives (id, name, slug, description, color, sort_order) VALUES (?, ?, ?, ?, ?, ?)');
+  const persps = [
+    ['Indian Perspective', 'indian', 'Documents presenting the Indian government and institutional viewpoint on Kashmir', '#FF9933', 1],
+    ['Pakistani Perspective', 'pakistani', 'Documents presenting the Pakistani government and institutional viewpoint on Kashmir', '#01411C', 2],
+    ['Kashmiri Perspective', 'kashmiri', 'Documents presenting the Kashmiri people\'s own viewpoint and narrative', '#c9a96e', 3],
+    ['International Perspective', 'international', 'Documents from international organisations, UN bodies, and foreign governments', '#4A90D9', 4],
+  ];
+  persps.forEach(([name, slug, desc, color, order]) => insertPersp.run(uuid(), name, slug, desc, color, order));
+  console.log('Seeded 4 default perspectives');
 }
 
 module.exports = db;

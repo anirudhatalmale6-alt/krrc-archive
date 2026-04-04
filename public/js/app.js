@@ -83,6 +83,7 @@ function showPage(page) {
     if (page === 'home') loadHomePage();
     if (page === 'browse') loadBrowseOverview();
     if (page === 'tutorial') loadTutorialPage();
+    if (page === 'policy') loadPolicyPage();
     if (page === 'admin') loadAdminDashboard();
 
     document.getElementById('main-footer').style.display = page === 'admin' ? 'none' : '';
@@ -441,6 +442,8 @@ function switchAdminTab(tab) {
     else if (tab === 'documents') loadAdminDocuments();
     else if (tab === 'users') loadAdminUsers();
     else if (tab === 'categories') loadAdminCategories();
+    else if (tab === 'perspectives') loadAdminPerspectives();
+    else if (tab === 'policies') loadAdminPolicies();
     else if (tab === 'tutorials') loadAdminTutorials();
     else if (tab === 'seo') loadAdminSEO();
     else if (tab === 'analytics') loadAdminAnalytics();
@@ -535,7 +538,12 @@ async function editDocMeta(id) {
     const docs = await apiFetch('/api/admin/documents');
     const doc = docs.find(d => d.id === id);
     if (!doc) return;
-    const cats = await fetch(API + '/api/categories').then(r => r.json());
+    const [cats, persps, docPersps] = await Promise.all([
+        fetch(API + '/api/categories').then(r => r.json()),
+        fetch(API + '/api/perspectives').then(r => r.json()),
+        fetch(API + '/api/documents/' + id + '/perspectives').then(r => r.json())
+    ]);
+    const docPerspIds = docPersps.map(p => p.id);
 
     const modal = document.getElementById('login-modal'); // reuse modal
     modal.querySelector('.modal').innerHTML = `
@@ -547,6 +555,14 @@ async function editDocMeta(id) {
         <div class="form-group" style="margin-bottom:8px;"><label>Year</label><input type="text" id="edit-year" value="${escapeHtml(doc.year || '')}"></div>
         <div class="form-group" style="margin-bottom:8px;"><label>Publisher</label><input type="text" id="edit-publisher" value="${escapeHtml(doc.publisher || '')}"></div>
         <div class="form-group" style="margin-bottom:8px;"><label>Publication Place</label><input type="text" id="edit-place" value="${escapeHtml(doc.publication_place || '')}"></div>
+        <div class="form-group" style="margin-bottom:8px;"><label>Perspectives</label>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;" id="edit-perspectives">
+                ${persps.map(p => `<label style="display:flex;align-items:center;gap:4px;cursor:pointer;padding:4px 10px;border-radius:16px;border:1px solid ${p.color};font-size:0.85rem;">
+                    <input type="checkbox" value="${p.id}" ${docPerspIds.includes(p.id) ? 'checked' : ''} style="accent-color:${p.color};">
+                    <span style="color:${p.color};">${escapeHtml(p.name)}</span>
+                </label>`).join('')}
+            </div>
+        </div>
         <div class="form-group" style="margin-bottom:8px;"><label>Edition</label><input type="text" id="edit-edition" value="${escapeHtml(doc.edition || '')}"></div>
         <div class="form-group" style="margin-bottom:8px;"><label>Description</label><textarea id="edit-desc" rows="3">${escapeHtml(doc.description || '')}</textarea></div>
         <div style="display:flex;gap:8px;margin-top:12px;">
@@ -572,6 +588,13 @@ async function saveDocEdit(id) {
                 edition: document.getElementById('edit-edition').value.trim(),
                 description: document.getElementById('edit-desc').value.trim()
             })
+        });
+        // Save perspectives
+        const perspCheckboxes = document.querySelectorAll('#edit-perspectives input[type="checkbox"]');
+        const perspIds = Array.from(perspCheckboxes).filter(c => c.checked).map(c => c.value);
+        await apiFetch('/api/admin/documents/' + id + '/perspectives', {
+            method: 'POST',
+            body: JSON.stringify({ perspectiveIds: perspIds })
         });
         hideLoginModal();
         resetLoginModal();
@@ -1137,6 +1160,310 @@ async function importAllFtp() {
         const result = await apiFetch('/api/admin/ftp-import-all', { method: 'POST' });
         showToast('Imported ' + result.imported + ' files, skipped ' + result.skipped, 'success');
         loadFtpImport();
+    } catch (err) { showToast(err.message, 'error'); }
+}
+
+// ===== POLICY PAGE =====
+async function loadPolicyPage() {
+    const perspDiv = document.getElementById('policy-perspectives');
+    const contentDiv = document.getElementById('policy-content');
+    try {
+        const [persps, policies] = await Promise.all([
+            fetch(API + '/api/perspectives').then(r => r.json()),
+            fetch(API + '/api/policies').then(r => r.json())
+        ]);
+
+        // Perspective cards with doc counts
+        const perspStatsPromises = persps.map(p => fetch(API + '/api/perspectives/' + p.slug + '/stats').then(r => r.json()).catch(() => ({ doc_count: 0 })));
+        const perspStats = await Promise.all(perspStatsPromises);
+
+        perspDiv.innerHTML = persps.map((p, i) => `
+            <div style="background:rgba(${hexToRgb(p.color)},0.1);border:1px solid ${p.color};border-radius:12px;padding:16px 24px;text-align:center;min-width:160px;cursor:pointer;" onclick="scrollToPerspective('${p.slug}')">
+                <div style="font-size:1.1rem;font-weight:600;color:${p.color};margin-bottom:4px;">${escapeHtml(p.name)}</div>
+                <div style="font-size:0.8rem;color:var(--text-muted);">${perspStats[i].doc_count || 0} documents</div>
+            </div>
+        `).join('');
+
+        // Group policies by perspective
+        const sections = ['aims', 'objectives', 'general'];
+        const sectionLabels = { aims: 'Aims', objectives: 'Objectives', general: 'General Policy' };
+        let html = '';
+
+        persps.forEach(p => {
+            const perspPolicies = policies.filter(pol => pol.perspective_id === p.id);
+            if (perspPolicies.length === 0) return;
+            html += `<div id="persp-${p.slug}" style="border-left:4px solid ${p.color};padding-left:20px;margin-bottom:24px;">
+                <h3 style="color:${p.color};font-family:var(--font-serif);font-size:1.3rem;margin-bottom:12px;">${escapeHtml(p.name)}</h3>
+                ${p.description ? `<p style="color:var(--text-secondary);font-size:0.9rem;margin-bottom:16px;">${escapeHtml(p.description)}</p>` : ''}`;
+            sections.forEach(sec => {
+                const secPolicies = perspPolicies.filter(pol => pol.section === sec);
+                if (secPolicies.length === 0) return;
+                html += `<h4 style="color:var(--text-primary);margin:12px 0 8px;font-size:1rem;">${sectionLabels[sec]}</h4>`;
+                secPolicies.forEach(pol => {
+                    html += `<div style="background:var(--bg-secondary);border-radius:8px;padding:16px;margin-bottom:8px;">
+                        <h5 style="color:var(--accent);margin-bottom:6px;">${escapeHtml(pol.title)}</h5>
+                        ${pol.content ? `<div style="color:var(--text-secondary);font-size:0.9rem;line-height:1.7;">${escapeHtml(pol.content).replace(/\n/g, '<br>')}</div>` : ''}
+                    </div>`;
+                });
+            });
+            html += '</div>';
+        });
+
+        // General policies (no perspective)
+        const generalPolicies = policies.filter(pol => !pol.perspective_id);
+        if (generalPolicies.length > 0) {
+            html += `<div style="border-left:4px solid var(--accent);padding-left:20px;margin-bottom:24px;">
+                <h3 style="color:var(--accent);font-family:var(--font-serif);font-size:1.3rem;margin-bottom:12px;">General</h3>`;
+            generalPolicies.forEach(pol => {
+                html += `<div style="background:var(--bg-secondary);border-radius:8px;padding:16px;margin-bottom:8px;">
+                    <h5 style="color:var(--accent);margin-bottom:6px;">${escapeHtml(pol.title)}</h5>
+                    ${pol.content ? `<div style="color:var(--text-secondary);font-size:0.9rem;line-height:1.7;">${escapeHtml(pol.content).replace(/\n/g, '<br>')}</div>` : ''}
+                </div>`;
+            });
+            html += '</div>';
+        }
+
+        if (!html) {
+            html = '<div style="text-align:center;padding:40px;color:var(--text-muted);"><i class="fas fa-scroll" style="font-size:2rem;margin-bottom:12px;display:block;"></i>Policy content is being prepared. Check back soon.</div>';
+        }
+
+        contentDiv.innerHTML = html;
+    } catch (e) { contentDiv.innerHTML = '<div style="color:var(--text-muted);text-align:center;">Could not load policy content.</div>'; }
+}
+
+function hexToRgb(hex) {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return r + ',' + g + ',' + b;
+}
+
+function scrollToPerspective(slug) {
+    const el = document.getElementById('persp-' + slug);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ===== ADMIN PERSPECTIVES =====
+async function loadAdminPerspectives() {
+    const content = document.getElementById('admin-content');
+    content.innerHTML = '<div style="text-align:center;padding:40px;"><div class="spinner"></div></div>';
+    try {
+        const persps = await fetch(API + '/api/perspectives').then(r => r.json());
+        content.innerHTML = `
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+                <h2 style="font-family:var(--font-serif);flex:1;margin:0;">Perspectives (${persps.length})</h2>
+                <button class="btn btn-accent" onclick="showPerspectiveForm()"><i class="fas fa-plus"></i> Add Perspective</button>
+            </div>
+
+            <div id="persp-form-panel" class="hidden" style="background:var(--card-bg);border-radius:8px;padding:20px;margin-bottom:24px;border:1px solid var(--accent);">
+                <h3 id="persp-form-title">Add Perspective</h3>
+                <input type="hidden" id="edit-persp-id" value="">
+                <div style="display:grid;gap:12px;margin-top:12px;">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                        <div><label style="font-size:0.85rem;color:var(--text-secondary);">Name</label>
+                            <input type="text" id="persp-name" placeholder="e.g., Indian Perspective"></div>
+                        <div><label style="font-size:0.85rem;color:var(--text-secondary);">Color</label>
+                            <input type="color" id="persp-color" value="#c9a96e" style="height:38px;width:100%;"></div>
+                    </div>
+                    <div><label style="font-size:0.85rem;color:var(--text-secondary);">Description</label>
+                        <textarea id="persp-description" rows="2" placeholder="Brief description of this perspective"></textarea></div>
+                    <div style="display:flex;gap:8px;">
+                        <button class="btn btn-accent" onclick="savePerspective()"><i class="fas fa-save"></i> Save</button>
+                        <button class="btn btn-sm" onclick="document.getElementById('persp-form-panel').classList.add('hidden')"><i class="fas fa-times"></i> Cancel</button>
+                    </div>
+                </div>
+            </div>
+
+            <div style="display:grid;gap:12px;">
+                ${persps.map(p => `<div style="background:var(--bg-secondary);border-radius:8px;padding:16px;display:flex;align-items:center;gap:12px;border-left:4px solid ${p.color};">
+                    <div style="width:24px;height:24px;border-radius:50%;background:${p.color};flex-shrink:0;"></div>
+                    <div style="flex:1;min-width:0;">
+                        <div style="font-weight:600;">${escapeHtml(p.name)}</div>
+                        <div style="font-size:0.8rem;color:var(--text-muted);">${escapeHtml(p.slug)} - ${escapeHtml(p.description || 'No description')}</div>
+                    </div>
+                    <button class="btn btn-sm" onclick="editPerspective('${p.id}')" title="Edit"><i class="fas fa-edit"></i></button>
+                    <button class="btn btn-sm" style="background:#ff4757;color:#fff;" onclick="deletePerspective('${p.id}')" title="Delete"><i class="fas fa-trash"></i></button>
+                </div>`).join('')}
+                ${persps.length === 0 ? '<div style="text-align:center;padding:40px;color:var(--text-muted);">No perspectives yet.</div>' : ''}
+            </div>
+        `;
+    } catch (err) { content.innerHTML = '<div style="color:#ff4757;">Error: ' + escapeHtml(err.message) + '</div>'; }
+}
+
+function showPerspectiveForm(editing) {
+    document.getElementById('persp-form-panel').classList.remove('hidden');
+    document.getElementById('persp-form-title').textContent = editing ? 'Edit Perspective' : 'Add Perspective';
+    if (!editing) {
+        document.getElementById('edit-persp-id').value = '';
+        document.getElementById('persp-name').value = '';
+        document.getElementById('persp-color').value = '#c9a96e';
+        document.getElementById('persp-description').value = '';
+    }
+}
+
+async function editPerspective(id) {
+    const persps = await fetch(API + '/api/perspectives').then(r => r.json());
+    const p = persps.find(x => x.id === id);
+    if (!p) return;
+    document.getElementById('edit-persp-id').value = p.id;
+    document.getElementById('persp-name').value = p.name;
+    document.getElementById('persp-color').value = p.color;
+    document.getElementById('persp-description').value = p.description || '';
+    showPerspectiveForm(true);
+}
+
+async function savePerspective() {
+    const id = document.getElementById('edit-persp-id').value;
+    const data = {
+        name: document.getElementById('persp-name').value.trim(),
+        color: document.getElementById('persp-color').value,
+        description: document.getElementById('persp-description').value.trim()
+    };
+    if (!data.name) { showToast('Name is required', 'error'); return; }
+    try {
+        if (id) {
+            await apiFetch('/api/admin/perspectives/' + id, { method: 'PUT', body: JSON.stringify(data) });
+            showToast('Perspective updated');
+        } else {
+            await apiFetch('/api/admin/perspectives', { method: 'POST', body: JSON.stringify(data) });
+            showToast('Perspective added');
+        }
+        document.getElementById('persp-form-panel').classList.add('hidden');
+        loadAdminPerspectives();
+    } catch (err) { showToast(err.message, 'error'); }
+}
+
+async function deletePerspective(id) {
+    if (!confirm('Delete this perspective? Associated policies and document links will also be removed.')) return;
+    try {
+        await apiFetch('/api/admin/perspectives/' + id, { method: 'DELETE' });
+        showToast('Perspective deleted');
+        loadAdminPerspectives();
+    } catch (err) { showToast(err.message, 'error'); }
+}
+
+// ===== ADMIN POLICIES =====
+async function loadAdminPolicies() {
+    const content = document.getElementById('admin-content');
+    content.innerHTML = '<div style="text-align:center;padding:40px;"><div class="spinner"></div></div>';
+    try {
+        const [policies, persps] = await Promise.all([
+            apiFetch('/api/admin/policies'),
+            fetch(API + '/api/perspectives').then(r => r.json())
+        ]);
+        content.innerHTML = `
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+                <h2 style="font-family:var(--font-serif);flex:1;margin:0;">Policies (${policies.length})</h2>
+                <button class="btn btn-accent" onclick="showPolicyForm()"><i class="fas fa-plus"></i> Add Policy</button>
+            </div>
+
+            <div id="policy-form-panel" class="hidden" style="background:var(--card-bg);border-radius:8px;padding:20px;margin-bottom:24px;border:1px solid var(--accent);">
+                <h3 id="policy-form-title">Add Policy</h3>
+                <input type="hidden" id="edit-policy-id" value="">
+                <div style="display:grid;gap:12px;margin-top:12px;">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                        <div><label style="font-size:0.85rem;color:var(--text-secondary);">Title</label>
+                            <input type="text" id="pol-title" placeholder="Policy title"></div>
+                        <div><label style="font-size:0.85rem;color:var(--text-secondary);">Perspective</label>
+                            <select id="pol-perspective">
+                                <option value="">General (no perspective)</option>
+                                ${persps.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('')}
+                            </select></div>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                        <div><label style="font-size:0.85rem;color:var(--text-secondary);">Section</label>
+                            <select id="pol-section">
+                                <option value="aims">Aims</option>
+                                <option value="objectives">Objectives</option>
+                                <option value="general">General Policy</option>
+                            </select></div>
+                        <div><label style="font-size:0.85rem;color:var(--text-secondary);">Sort Order</label>
+                            <input type="number" id="pol-order" value="0" min="0" style="width:100%;"></div>
+                    </div>
+                    <div><label style="font-size:0.85rem;color:var(--text-secondary);">Content</label>
+                        <textarea id="pol-content" rows="6" placeholder="Write the policy content here..."></textarea></div>
+                    <div style="display:flex;gap:8px;">
+                        <button class="btn btn-accent" onclick="savePolicy()"><i class="fas fa-save"></i> Save</button>
+                        <button class="btn btn-sm" onclick="document.getElementById('policy-form-panel').classList.add('hidden')"><i class="fas fa-times"></i> Cancel</button>
+                    </div>
+                </div>
+            </div>
+
+            <table class="admin-table">
+                <thead><tr><th>Title</th><th>Perspective</th><th>Section</th><th>Status</th><th>Actions</th></tr></thead>
+                <tbody>
+                ${policies.map(pol => `<tr>
+                    <td><strong>${escapeHtml(pol.title)}</strong></td>
+                    <td>${pol.perspective_name ? `<span style="color:${pol.perspective_color || 'var(--accent)'};">${escapeHtml(pol.perspective_name)}</span>` : '<span style="color:var(--text-muted);">General</span>'}</td>
+                    <td><span class="badge badge-book">${pol.section}</span></td>
+                    <td>${pol.is_published ? '<span class="badge badge-approved">Published</span>' : '<span class="badge badge-pending">Draft</span>'}</td>
+                    <td style="white-space:nowrap;">
+                        <button class="btn btn-sm" onclick="editPolicy('${pol.id}')" title="Edit"><i class="fas fa-edit"></i></button>
+                        <button class="btn btn-sm" style="background:#ff4757;color:#fff;" onclick="deletePolicy('${pol.id}')" title="Delete"><i class="fas fa-trash"></i></button>
+                    </td>
+                </tr>`).join('')}
+                ${policies.length === 0 ? '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted);">No policies yet. Add your aims, objectives, and policies.</td></tr>' : ''}
+                </tbody>
+            </table>
+        `;
+    } catch (err) { content.innerHTML = '<div style="color:#ff4757;">Error: ' + escapeHtml(err.message) + '</div>'; }
+}
+
+function showPolicyForm(editing) {
+    document.getElementById('policy-form-panel').classList.remove('hidden');
+    document.getElementById('policy-form-title').textContent = editing ? 'Edit Policy' : 'Add Policy';
+    if (!editing) {
+        document.getElementById('edit-policy-id').value = '';
+        document.getElementById('pol-title').value = '';
+        document.getElementById('pol-perspective').value = '';
+        document.getElementById('pol-section').value = 'aims';
+        document.getElementById('pol-content').value = '';
+        document.getElementById('pol-order').value = '0';
+    }
+}
+
+async function editPolicy(id) {
+    const policies = await apiFetch('/api/admin/policies');
+    const pol = policies.find(x => x.id === id);
+    if (!pol) return;
+    document.getElementById('edit-policy-id').value = pol.id;
+    document.getElementById('pol-title').value = pol.title;
+    document.getElementById('pol-perspective').value = pol.perspective_id || '';
+    document.getElementById('pol-section').value = pol.section;
+    document.getElementById('pol-content').value = pol.content || '';
+    document.getElementById('pol-order').value = pol.sort_order;
+    showPolicyForm(true);
+}
+
+async function savePolicy() {
+    const id = document.getElementById('edit-policy-id').value;
+    const data = {
+        title: document.getElementById('pol-title').value.trim(),
+        perspective_id: document.getElementById('pol-perspective').value || null,
+        section: document.getElementById('pol-section').value,
+        content: document.getElementById('pol-content').value.trim(),
+        sort_order: parseInt(document.getElementById('pol-order').value) || 0
+    };
+    if (!data.title) { showToast('Title is required', 'error'); return; }
+    try {
+        if (id) {
+            await apiFetch('/api/admin/policies/' + id, { method: 'PUT', body: JSON.stringify(data) });
+            showToast('Policy updated');
+        } else {
+            await apiFetch('/api/admin/policies', { method: 'POST', body: JSON.stringify(data) });
+            showToast('Policy added');
+        }
+        document.getElementById('policy-form-panel').classList.add('hidden');
+        loadAdminPolicies();
+    } catch (err) { showToast(err.message, 'error'); }
+}
+
+async function deletePolicy(id) {
+    if (!confirm('Delete this policy?')) return;
+    try {
+        await apiFetch('/api/admin/policies/' + id, { method: 'DELETE' });
+        showToast('Policy deleted');
+        loadAdminPolicies();
     } catch (err) { showToast(err.message, 'error'); }
 }
 
