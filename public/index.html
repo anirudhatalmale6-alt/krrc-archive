@@ -362,18 +362,19 @@
     <!-- ===== ADMIN PAGE ===== -->
     <div class="page" id="page-admin">
         <div class="admin-layout">
-            <div class="admin-sidebar">
+            <div class="admin-sidebar" id="admin-sidebar">
                 <button class="active" onclick="switchAdminTab('dashboard')"><i class="fas fa-chart-bar"></i> Dashboard</button>
                 <button onclick="switchAdminTab('documents')"><i class="fas fa-file-pdf"></i> Documents</button>
-                <button onclick="switchAdminTab('users')"><i class="fas fa-users"></i> Users</button>
-                <button onclick="switchAdminTab('categories')"><i class="fas fa-tags"></i> Categories</button>
-                <button onclick="switchAdminTab('perspectives')"><i class="fas fa-eye"></i> Perspectives</button>
-                <button onclick="switchAdminTab('policies')"><i class="fas fa-scroll"></i> Policies</button>
-                <button onclick="switchAdminTab('tutorials')"><i class="fas fa-graduation-cap"></i> Tutorials</button>
-                <button onclick="switchAdminTab('access')"><i class="fas fa-lock"></i> Access Control</button>
-                <button onclick="switchAdminTab('seo')"><i class="fas fa-search"></i> SEO / Keywords</button>
-                <button onclick="switchAdminTab('analytics')"><i class="fas fa-chart-line"></i> Analytics</button>
-                <button onclick="switchAdminTab('ftp')"><i class="fas fa-server"></i> FTP Import</button>
+                <button class="admin-only-tab" onclick="switchAdminTab('delete-requests')"><i class="fas fa-trash-alt"></i> Delete Requests</button>
+                <button class="admin-only-tab" onclick="switchAdminTab('users')"><i class="fas fa-users"></i> Users</button>
+                <button class="admin-only-tab" onclick="switchAdminTab('categories')"><i class="fas fa-tags"></i> Categories</button>
+                <button class="admin-only-tab" onclick="switchAdminTab('perspectives')"><i class="fas fa-eye"></i> Perspectives</button>
+                <button class="admin-only-tab" onclick="switchAdminTab('policies')"><i class="fas fa-scroll"></i> Policies</button>
+                <button class="admin-only-tab" onclick="switchAdminTab('tutorials')"><i class="fas fa-graduation-cap"></i> Tutorials</button>
+                <button class="admin-only-tab" onclick="switchAdminTab('access')"><i class="fas fa-lock"></i> Access Control</button>
+                <button class="admin-only-tab" onclick="switchAdminTab('seo')"><i class="fas fa-search"></i> SEO / Keywords</button>
+                <button class="admin-only-tab" onclick="switchAdminTab('analytics')"><i class="fas fa-chart-line"></i> Analytics</button>
+                <button class="admin-only-tab" onclick="switchAdminTab('ftp')"><i class="fas fa-server"></i> FTP Import</button>
             </div>
             <div class="admin-content" id="admin-content">
                 <div style="text-align:center;padding:40px;color:var(--text-muted);"><div class="spinner"></div></div>

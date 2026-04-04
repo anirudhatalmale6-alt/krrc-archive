@@ -92,7 +92,14 @@ function showPage(page) {
     else if (page === 'upload') {
         if (!checkAccess('upload')) { document.getElementById('page-upload').querySelector('.container').innerHTML = showAccessGate('Upload'); return; }
     }
-    else if (page === 'admin') loadAdminDashboard();
+    else if (page === 'admin') {
+        // Show/hide admin-only tabs for editors
+        const isEditor = user && user.role === 'editor';
+        document.querySelectorAll('.admin-only-tab').forEach(tab => {
+            tab.style.display = isEditor ? 'none' : '';
+        });
+        loadAdminDashboard();
+    }
 
     document.getElementById('main-footer').style.display = page === 'admin' ? 'none' : '';
 }
@@ -140,9 +147,10 @@ function logout() {
 
 function updateAuthUI() {
     const isAdmin = user && user.role === 'admin';
+    const isEditor = user && user.role === 'editor';
     document.getElementById('nav-login-btn').classList.toggle('hidden', !!user);
     document.getElementById('nav-logout-btn').classList.toggle('hidden', !user);
-    document.getElementById('nav-admin-btn').classList.toggle('hidden', !isAdmin);
+    document.getElementById('nav-admin-btn').classList.toggle('hidden', !(isAdmin || isEditor));
 }
 
 // ===== HOME PAGE =====
@@ -459,6 +467,7 @@ function switchAdminTab(tab) {
     if (tab === 'dashboard') loadAdminDashboard();
     else if (tab === 'documents') loadAdminDocuments();
     else if (tab === 'users') loadAdminUsers();
+    else if (tab === 'delete-requests') loadDeleteRequests();
     else if (tab === 'categories') loadAdminCategories();
     else if (tab === 'perspectives') loadAdminPerspectives();
     else if (tab === 'policies') loadAdminPolicies();
@@ -501,7 +510,9 @@ async function loadAdminDocuments() {
             <table class="admin-table">
                 <thead><tr><th>Title</th><th>Author</th><th>Language</th><th>Year</th><th>Type</th><th>Pages</th><th>Status</th><th>Actions</th></tr></thead>
                 <tbody>
-                ${docs.map(d => `<tr>
+                ${docs.map(d => {
+                    const isAdmin = user && user.role === 'admin';
+                    return `<tr>
                     <td style="max-width:250px;"><strong>${escapeHtml(d.title)}</strong><br><span style="font-size:0.7rem;color:var(--text-muted);">${escapeHtml(d.original_name)}</span></td>
                     <td>${escapeHtml(d.author || '-')}</td>
                     <td>${escapeHtml(d.language)}</td>
@@ -510,12 +521,13 @@ async function loadAdminDocuments() {
                     <td>${d.page_count || 0}</td>
                     <td>${d.is_approved ? '<span class="badge badge-approved">Approved</span>' : '<span class="badge badge-pending">Pending</span>'}</td>
                     <td style="white-space:nowrap;">
-                        ${!d.is_approved ? `<button class="btn btn-sm btn-primary" onclick="approveDoc('${d.id}')" title="Approve"><i class="fas fa-check"></i></button>` : ''}
+                        ${isAdmin && !d.is_approved ? `<button class="btn btn-sm btn-primary" onclick="approveDoc('${d.id}')" title="Approve"><i class="fas fa-check"></i></button>` : ''}
                         <button class="btn btn-sm" onclick="recategoriseDoc('${d.id}')" title="AI Re-categorise"><i class="fas fa-robot"></i></button>
                         <button class="btn btn-sm" onclick="editDocMeta('${d.id}')" title="Edit"><i class="fas fa-edit"></i></button>
-                        <button class="btn btn-sm btn-danger" onclick="deleteDoc('${d.id}')" title="Delete"><i class="fas fa-trash"></i></button>
+                        ${isAdmin ? `<button class="btn btn-sm btn-danger" onclick="deleteDoc('${d.id}')" title="Delete"><i class="fas fa-trash"></i></button>` :
+                        `<button class="btn btn-sm" style="background:#ff9f43;color:#fff;" onclick="requestDeleteDoc('${d.id}')" title="Request Deletion"><i class="fas fa-flag"></i></button>`}
                     </td>
-                </tr>`).join('')}
+                </tr>`;}).join('')}
                 </tbody>
             </table></div>
         `;
@@ -550,6 +562,76 @@ async function deleteDoc(id) {
         await apiFetch('/api/admin/documents/' + id, { method: 'DELETE' });
         showToast('Document deleted');
         loadAdminDocuments();
+    } catch (err) { showToast(err.message, 'error'); }
+}
+
+async function requestDeleteDoc(id) {
+    const comment = prompt('Why should this document be deleted? (comment for admin):');
+    if (comment === null) return; // cancelled
+    try {
+        await apiFetch('/api/admin/documents/' + id + '/request-delete', { method: 'POST', body: JSON.stringify({ comment }) });
+        showToast('Delete request sent to admin');
+    } catch (err) { showToast(err.message, 'error'); }
+}
+
+async function loadDeleteRequests() {
+    const content = document.getElementById('admin-content');
+    content.innerHTML = '<div style="text-align:center;padding:40px;"><div class="spinner"></div></div>';
+    try {
+        const requests = await apiFetch('/api/admin/delete-requests');
+        const pending = requests.filter(r => r.status === 'pending');
+        const resolved = requests.filter(r => r.status !== 'pending');
+        content.innerHTML = `
+            <h2 style="font-family:var(--font-serif);margin-bottom:20px;">Delete Requests ${pending.length > 0 ? '<span style="background:#ff4757;color:#fff;font-size:0.7rem;padding:2px 8px;border-radius:10px;vertical-align:middle;">' + pending.length + ' pending</span>' : ''}</h2>
+            ${pending.length > 0 ? `
+            <h3 style="margin-bottom:12px;color:var(--accent);">Pending Requests</h3>
+            <table class="admin-table">
+                <thead><tr><th>Document</th><th>Requested By</th><th>Comment</th><th>Date</th><th>Actions</th></tr></thead>
+                <tbody>
+                ${pending.map(r => `<tr>
+                    <td><strong>${escapeHtml(r.doc_title)}</strong></td>
+                    <td>${escapeHtml(r.requester_name)}</td>
+                    <td style="max-width:250px;">${escapeHtml(r.comment || '-')}</td>
+                    <td>${new Date(r.created_at).toLocaleDateString()}</td>
+                    <td style="white-space:nowrap;">
+                        <button class="btn btn-sm" style="background:#2ed573;color:#fff;" onclick="approveDeleteRequest('${r.id}')" title="Approve & Delete"><i class="fas fa-check"></i> Approve</button>
+                        <button class="btn btn-sm" style="background:#ff4757;color:#fff;" onclick="rejectDeleteRequest('${r.id}')" title="Reject"><i class="fas fa-times"></i> Reject</button>
+                    </td>
+                </tr>`).join('')}
+                </tbody>
+            </table>` : '<div style="text-align:center;padding:30px;color:var(--text-muted);background:var(--bg-secondary);border-radius:8px;margin-bottom:20px;"><i class="fas fa-check-circle" style="color:#2ed573;font-size:1.5rem;margin-bottom:8px;display:block;"></i>No pending delete requests</div>'}
+            ${resolved.length > 0 ? `
+            <h3 style="margin-top:24px;margin-bottom:12px;color:var(--text-muted);">History</h3>
+            <table class="admin-table">
+                <thead><tr><th>Document</th><th>Requested By</th><th>Comment</th><th>Status</th><th>Date</th></tr></thead>
+                <tbody>
+                ${resolved.map(r => `<tr style="opacity:0.7;">
+                    <td>${escapeHtml(r.doc_title)}</td>
+                    <td>${escapeHtml(r.requester_name)}</td>
+                    <td style="max-width:250px;">${escapeHtml(r.comment || '-')}</td>
+                    <td>${r.status === 'approved' ? '<span class="badge badge-approved">Approved</span>' : '<span style="color:#ff4757;">Rejected</span>'}</td>
+                    <td>${new Date(r.created_at).toLocaleDateString()}</td>
+                </tr>`).join('')}
+                </tbody>
+            </table>` : ''}
+        `;
+    } catch (err) { content.innerHTML = '<div style="color:#ff4757;">Error: ' + escapeHtml(err.message) + '</div>'; }
+}
+
+async function approveDeleteRequest(id) {
+    if (!confirm('Approve this delete request? The document will be permanently deleted.')) return;
+    try {
+        await apiFetch('/api/admin/delete-requests/' + id + '/approve', { method: 'POST' });
+        showToast('Document deleted');
+        loadDeleteRequests();
+    } catch (err) { showToast(err.message, 'error'); }
+}
+
+async function rejectDeleteRequest(id) {
+    try {
+        await apiFetch('/api/admin/delete-requests/' + id + '/reject', { method: 'POST' });
+        showToast('Delete request rejected');
+        loadDeleteRequests();
     } catch (err) { showToast(err.message, 'error'); }
 }
 
@@ -651,6 +733,7 @@ async function loadAdminUsers() {
                         ${u.role === 'admin' ? '<span class="badge badge-book">Admin</span>' :
                         `<select onchange="changeUserRole('${u.id}', this.value)" style="width:auto;padding:4px 8px;font-size:0.8rem;">
                             <option value="member" ${u.role === 'member' ? 'selected' : ''}>Member</option>
+                            <option value="editor" ${u.role === 'editor' ? 'selected' : ''}>Editor</option>
                             <option value="admin">Admin</option>
                         </select>`}
                     </td>

@@ -177,6 +177,20 @@ db.exec(`
     page_count INTEGER DEFAULT 0
   );
 
+  CREATE TABLE IF NOT EXISTS delete_requests (
+    id TEXT PRIMARY KEY,
+    document_id TEXT NOT NULL,
+    requested_by TEXT NOT NULL,
+    comment TEXT,
+    status TEXT DEFAULT 'pending',
+    reviewed_by TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    reviewed_at DATETIME,
+    FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
+    FOREIGN KEY (requested_by) REFERENCES users(id),
+    FOREIGN KEY (reviewed_by) REFERENCES users(id)
+  );
+
   CREATE TABLE IF NOT EXISTS access_settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL,

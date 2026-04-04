@@ -93,6 +93,11 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+function requireEditorOrAdmin(req, res, next) {
+  if (req.user.role !== 'admin' && req.user.role !== 'editor') return res.status(403).json({ error: 'Editor or Admin access required' });
+  next();
+}
+
 // ===== AUTH =====
 app.post(BASE + '/api/auth/login', authLimiter, (req, res) => {
   const { email, password } = req.body;
@@ -467,13 +472,13 @@ app.get(BASE + '/api/documents/:id/excerpt', (req, res) => {
 
 // ===== ADMIN ROUTES =====
 // List all documents (admin)
-app.get(BASE + '/api/admin/documents', authenticateToken, requireAdmin, (req, res) => {
+app.get(BASE + '/api/admin/documents', authenticateToken, requireEditorOrAdmin, (req, res) => {
   const docs = db.prepare(`SELECT d.*, u.name as uploader_name FROM documents d LEFT JOIN users u ON u.id = d.uploaded_by ORDER BY d.created_at DESC`).all();
   res.json(docs.map(d => ({ ...d, extracted_text: undefined, tags: JSON.parse(d.tags || '[]') })));
 });
 
 // Re-categorise document with AI
-app.post(BASE + '/api/admin/documents/:id/recategorise', authenticateToken, requireAdmin, async (req, res) => {
+app.post(BASE + '/api/admin/documents/:id/recategorise', authenticateToken, requireEditorOrAdmin, async (req, res) => {
   const doc = db.prepare('SELECT id, title, extracted_text, filename FROM documents WHERE id = ?').get(req.params.id);
   if (!doc) return res.status(404).json({ error: 'Not found' });
 
@@ -523,8 +528,54 @@ app.delete(BASE + '/api/admin/documents/:id', authenticateToken, requireAdmin, (
   res.json({ success: true });
 });
 
+// Editor: request document deletion
+app.post(BASE + '/api/admin/documents/:id/request-delete', authenticateToken, requireEditorOrAdmin, (req, res) => {
+  const { comment } = req.body;
+  const doc = db.prepare('SELECT id, title FROM documents WHERE id = ?').get(req.params.id);
+  if (!doc) return res.status(404).json({ error: 'Document not found' });
+  // Check if there's already a pending request
+  const existing = db.prepare("SELECT id FROM delete_requests WHERE document_id = ? AND status = 'pending'").get(req.params.id);
+  if (existing) return res.status(400).json({ error: 'Delete request already pending for this document' });
+  const id = uuid();
+  db.prepare('INSERT INTO delete_requests (id, document_id, requested_by, comment) VALUES (?, ?, ?, ?)').run(id, req.params.id, req.user.userId, comment || '');
+  res.json({ success: true, message: 'Delete request submitted to admin' });
+});
+
+// Admin: get all delete requests
+app.get(BASE + '/api/admin/delete-requests', authenticateToken, requireAdmin, (req, res) => {
+  const requests = db.prepare(`SELECT dr.*, d.title as doc_title, u.name as requester_name
+    FROM delete_requests dr
+    JOIN documents d ON d.id = dr.document_id
+    JOIN users u ON u.id = dr.requested_by
+    ORDER BY dr.created_at DESC`).all();
+  res.json(requests);
+});
+
+// Admin: approve delete request (actually delete the document)
+app.post(BASE + '/api/admin/delete-requests/:id/approve', authenticateToken, requireAdmin, (req, res) => {
+  const request = db.prepare('SELECT * FROM delete_requests WHERE id = ?').get(req.params.id);
+  if (!request) return res.status(404).json({ error: 'Request not found' });
+  // Delete the document
+  const doc = db.prepare('SELECT filename FROM documents WHERE id = ?').get(request.document_id);
+  if (doc) {
+    const filePath = path.join(uploadsDir, doc.filename);
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  }
+  db.prepare('DELETE FROM document_categories WHERE document_id = ?').run(request.document_id);
+  db.prepare('DELETE FROM document_perspectives WHERE document_id = ?').run(request.document_id);
+  db.prepare('DELETE FROM documents WHERE id = ?').run(request.document_id);
+  db.prepare("UPDATE delete_requests SET status = 'approved', reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP WHERE id = ?").run(req.user.userId, req.params.id);
+  res.json({ success: true });
+});
+
+// Admin: reject delete request
+app.post(BASE + '/api/admin/delete-requests/:id/reject', authenticateToken, requireAdmin, (req, res) => {
+  db.prepare("UPDATE delete_requests SET status = 'rejected', reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP WHERE id = ?").run(req.user.userId, req.params.id);
+  res.json({ success: true });
+});
+
 // Update document metadata
-app.patch(BASE + '/api/admin/documents/:id', authenticateToken, requireAdmin, (req, res) => {
+app.patch(BASE + '/api/admin/documents/:id', authenticateToken, requireEditorOrAdmin, (req, res) => {
   const { title, author, subject, publication_place, publisher, language, year, edition, doc_type, description, tags, is_public, categories } = req.body;
   const updates = [];
   const params = [];
@@ -580,7 +631,7 @@ app.post(BASE + '/api/admin/users/:id/reset-password', authenticateToken, requir
 
 app.post(BASE + '/api/admin/users/:id/role', authenticateToken, requireAdmin, (req, res) => {
   const { role } = req.body;
-  if (!['member', 'admin'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
+  if (!['member', 'editor', 'admin'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
   db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, req.params.id);
   res.json({ success: true });
 });
@@ -591,7 +642,7 @@ app.delete(BASE + '/api/admin/users/:id', authenticateToken, requireAdmin, (req,
 });
 
 // Admin stats
-app.get(BASE + '/api/admin/stats', authenticateToken, requireAdmin, (req, res) => {
+app.get(BASE + '/api/admin/stats', authenticateToken, requireEditorOrAdmin, (req, res) => {
   const totalDocs = db.prepare('SELECT COUNT(*) as cnt FROM documents').get().cnt;
   const approvedDocs = db.prepare("SELECT COUNT(*) as cnt FROM documents WHERE is_approved = 1").get().cnt;
   const pendingDocs = db.prepare("SELECT COUNT(*) as cnt FROM documents WHERE is_approved = 0").get().cnt;
@@ -1099,7 +1150,7 @@ app.delete(BASE + '/api/admin/perspectives/:id', authenticateToken, requireAdmin
 });
 
 // Admin: assign perspective to document
-app.post(BASE + '/api/admin/documents/:id/perspectives', authenticateToken, requireAdmin, (req, res) => {
+app.post(BASE + '/api/admin/documents/:id/perspectives', authenticateToken, requireEditorOrAdmin, (req, res) => {
   const { perspective_ids } = req.body;
   if (!Array.isArray(perspective_ids)) return res.status(400).json({ error: 'perspective_ids array required' });
   db.prepare('DELETE FROM document_perspectives WHERE document_id = ?').run(req.params.id);
