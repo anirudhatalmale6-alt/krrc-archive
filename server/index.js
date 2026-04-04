@@ -1036,6 +1036,105 @@ app.post(BASE + '/api/admin/seo-settings', authenticateToken, requireAdmin, (req
   res.json({ success: true });
 });
 
+// ===== TUTORIALS =====
+// Tutorial screenshots storage
+const tutorialUploadsDir = path.join(__dirname, '../public/tutorial-images');
+fs.mkdirSync(tutorialUploadsDir, { recursive: true });
+const tutorialStorage = multer.diskStorage({
+  destination: tutorialUploadsDir,
+  filename: (req, file, cb) => { cb(null, uuid() + path.extname(file.originalname)); }
+});
+const tutorialUpload = multer({ storage: tutorialStorage, limits: { fileSize: 10 * 1024 * 1024 }, fileFilter: (req, file, cb) => {
+  if (file.mimetype.startsWith('image/')) cb(null, true);
+  else cb(new Error('Only images allowed'));
+}});
+
+// Public: get all published tutorials (frontend = all, admin = members only)
+app.get(BASE + '/api/tutorials', (req, res) => {
+  const section = req.query.section || 'all';
+  let tutorials;
+  if (section === 'all') {
+    tutorials = db.prepare('SELECT id, title, description, screenshot_path, content, section, sort_order FROM tutorials WHERE is_published = 1 ORDER BY section, sort_order').all();
+  } else {
+    tutorials = db.prepare('SELECT id, title, description, screenshot_path, content, section, sort_order FROM tutorials WHERE is_published = 1 AND section = ? ORDER BY sort_order').all(section);
+  }
+  res.json(tutorials);
+});
+
+// Public: get single tutorial
+app.get(BASE + '/api/tutorials/:id', (req, res) => {
+  const tutorial = db.prepare('SELECT * FROM tutorials WHERE id = ? AND is_published = 1').get(req.params.id);
+  if (!tutorial) return res.status(404).json({ error: 'Tutorial not found' });
+  // Check access: admin section requires authentication
+  if (tutorial.section === 'admin') {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ error: 'Login required for admin tutorials' });
+    try {
+      jwt.verify(authHeader.split(' ')[1], JWT_SECRET);
+    } catch (e) { return res.status(401).json({ error: 'Login required for admin tutorials' }); }
+  }
+  res.json(tutorial);
+});
+
+// Admin: get all tutorials (including unpublished)
+app.get(BASE + '/api/admin/tutorials', authenticateToken, requireAdmin, (req, res) => {
+  const tutorials = db.prepare('SELECT * FROM tutorials ORDER BY section, sort_order').all();
+  res.json(tutorials);
+});
+
+// Admin: create tutorial
+app.post(BASE + '/api/admin/tutorials', authenticateToken, requireAdmin, tutorialUpload.single('screenshot'), (req, res) => {
+  const { title, description, content, section, sort_order } = req.body;
+  if (!title) return res.status(400).json({ error: 'Title required' });
+  const id = uuid();
+  const screenshotPath = req.file ? '/krrc/tutorial-images/' + req.file.filename : '';
+  const order = parseInt(sort_order) || 0;
+  db.prepare('INSERT INTO tutorials (id, title, description, screenshot_path, content, section, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+    id, title.trim(), (description || '').trim(), screenshotPath, (content || '').trim(), section || 'frontend', order
+  );
+  res.json({ id, title: title.trim() });
+});
+
+// Admin: update tutorial
+app.put(BASE + '/api/admin/tutorials/:id', authenticateToken, requireAdmin, tutorialUpload.single('screenshot'), (req, res) => {
+  const { title, description, content, section, sort_order, is_published } = req.body;
+  const existing = db.prepare('SELECT * FROM tutorials WHERE id = ?').get(req.params.id);
+  if (!existing) return res.status(404).json({ error: 'Tutorial not found' });
+  const screenshotPath = req.file ? '/krrc/tutorial-images/' + req.file.filename : existing.screenshot_path;
+  db.prepare(`UPDATE tutorials SET title = ?, description = ?, screenshot_path = ?, content = ?, section = ?, sort_order = ?, is_published = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(
+    (title || existing.title).trim(), (description !== undefined ? description : existing.description || '').trim(),
+    screenshotPath, (content !== undefined ? content : existing.content || '').trim(),
+    section || existing.section, parseInt(sort_order) || existing.sort_order,
+    is_published !== undefined ? parseInt(is_published) : existing.is_published, req.params.id
+  );
+  // If old screenshot was replaced, delete old file
+  if (req.file && existing.screenshot_path) {
+    const oldFile = path.join(__dirname, '..', 'public', existing.screenshot_path.replace('/krrc/', ''));
+    if (fs.existsSync(oldFile)) fs.unlinkSync(oldFile);
+  }
+  res.json({ success: true });
+});
+
+// Admin: delete tutorial
+app.delete(BASE + '/api/admin/tutorials/:id', authenticateToken, requireAdmin, (req, res) => {
+  const tutorial = db.prepare('SELECT screenshot_path FROM tutorials WHERE id = ?').get(req.params.id);
+  if (tutorial && tutorial.screenshot_path) {
+    const filePath = path.join(__dirname, '..', 'public', tutorial.screenshot_path.replace('/krrc/', ''));
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  }
+  db.prepare('DELETE FROM tutorials WHERE id = ?').run(req.params.id);
+  res.json({ success: true });
+});
+
+// Admin: reorder tutorials
+app.post(BASE + '/api/admin/tutorials/reorder', authenticateToken, requireAdmin, (req, res) => {
+  const { orders } = req.body;
+  if (!Array.isArray(orders)) return res.status(400).json({ error: 'Orders array required' });
+  const stmt = db.prepare('UPDATE tutorials SET sort_order = ? WHERE id = ?');
+  orders.forEach(o => stmt.run(o.order, o.id));
+  res.json({ success: true });
+});
+
 // ===== SITEMAP =====
 app.get(BASE + '/sitemap.xml', (req, res) => {
   const baseUrl = 'https://skylarkmedia.se/krrc';

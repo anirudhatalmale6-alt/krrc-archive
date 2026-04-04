@@ -61,6 +61,7 @@
             <button class="nav-link active" onclick="showPage('home')">Home</button>
             <button class="nav-link" onclick="showPage('browse')">Browse</button>
             <button class="nav-link" onclick="showPage('upload')">Upload</button>
+            <button class="nav-link" onclick="showPage('tutorial')">Tutorial</button>
             <button class="nav-link" onclick="showPage('about')">About</button>
             <button class="nav-link" id="nav-login-btn" onclick="showLoginModal()">Login</button>
             <button class="nav-link hidden" id="nav-admin-btn" onclick="showPage('admin')"><i class="fas fa-cog"></i> Admin</button>
@@ -211,22 +212,78 @@
                                 <option value="Bodo">Bodo</option>
                                 <option value="Santali">Santali</option>
                             </optgroup>
-                            <optgroup label="Nordic">
+                            <optgroup label="Middle Eastern / Central Asian">
+                                <option value="Turkish">Turkish</option>
+                                <option value="Kurdish">Kurdish</option>
+                                <option value="Azerbaijani">Azerbaijani</option>
+                                <option value="Uzbek">Uzbek</option>
+                                <option value="Kazakh">Kazakh</option>
+                                <option value="Tajik">Tajik</option>
+                                <option value="Turkmen">Turkmen</option>
+                                <option value="Kyrgyz">Kyrgyz</option>
+                                <option value="Hebrew">Hebrew</option>
+                                <option value="Armenian">Armenian</option>
+                                <option value="Georgian">Georgian</option>
+                            </optgroup>
+                            <optgroup label="European">
+                                <option value="French">French</option>
+                                <option value="German">German</option>
+                                <option value="Spanish">Spanish</option>
+                                <option value="Portuguese">Portuguese</option>
+                                <option value="Italian">Italian</option>
+                                <option value="Dutch">Dutch</option>
                                 <option value="Swedish">Swedish</option>
                                 <option value="Danish">Danish</option>
                                 <option value="Norwegian">Norwegian</option>
+                                <option value="Finnish">Finnish</option>
+                                <option value="Icelandic">Icelandic</option>
+                                <option value="Polish">Polish</option>
+                                <option value="Czech">Czech</option>
+                                <option value="Slovak">Slovak</option>
+                                <option value="Hungarian">Hungarian</option>
+                                <option value="Romanian">Romanian</option>
+                                <option value="Bulgarian">Bulgarian</option>
+                                <option value="Serbian">Serbian</option>
+                                <option value="Croatian">Croatian</option>
+                                <option value="Bosnian">Bosnian</option>
+                                <option value="Slovenian">Slovenian</option>
+                                <option value="Albanian">Albanian</option>
+                                <option value="Greek">Greek</option>
+                                <option value="Ukrainian">Ukrainian</option>
+                                <option value="Russian">Russian</option>
+                                <option value="Belarusian">Belarusian</option>
+                                <option value="Lithuanian">Lithuanian</option>
+                                <option value="Latvian">Latvian</option>
+                                <option value="Estonian">Estonian</option>
+                            </optgroup>
+                            <optgroup label="East / Southeast Asian">
+                                <option value="Chinese">Chinese (Mandarin)</option>
+                                <option value="Cantonese">Cantonese</option>
+                                <option value="Japanese">Japanese</option>
+                                <option value="Korean">Korean</option>
+                                <option value="Vietnamese">Vietnamese</option>
+                                <option value="Thai">Thai</option>
+                                <option value="Burmese">Burmese</option>
+                                <option value="Khmer">Khmer</option>
+                                <option value="Lao">Lao</option>
+                                <option value="Malay">Malay</option>
+                                <option value="Indonesian">Indonesian</option>
+                                <option value="Filipino">Filipino / Tagalog</option>
+                                <option value="Mongolian">Mongolian</option>
+                            </optgroup>
+                            <optgroup label="African">
+                                <option value="Swahili">Swahili</option>
+                                <option value="Amharic">Amharic</option>
+                                <option value="Somali">Somali</option>
+                                <option value="Hausa">Hausa</option>
+                                <option value="Yoruba">Yoruba</option>
+                                <option value="Igbo">Igbo</option>
+                                <option value="Zulu">Zulu</option>
+                                <option value="Afrikaans">Afrikaans</option>
                             </optgroup>
                             <optgroup label="Other">
-                                <option value="Turkish">Turkish</option>
-                                <option value="French">French</option>
-                                <option value="German">German</option>
-                                <option value="Russian">Russian</option>
-                                <option value="Chinese">Chinese</option>
-                                <option value="Japanese">Japanese</option>
-                                <option value="Portuguese">Portuguese</option>
-                                <option value="Spanish">Spanish</option>
-                                <option value="Italian">Italian</option>
-                                <option value="Dutch">Dutch</option>
+                                <option value="Latin">Latin</option>
+                                <option value="Esperanto">Esperanto</option>
                                 <option value="Other">Other</option>
                             </optgroup>
                         </select>
@@ -246,6 +303,29 @@
                 </button>
                 <div id="upload-progress" class="hidden" style="margin-top:12px;"></div>
                 <p style="text-align:center;font-size:0.8rem;color:var(--text-muted);">Uploaded files will be reviewed by an admin before appearing in the archive. AI will auto-categorise content.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== TUTORIAL PAGE ===== -->
+    <div class="page" id="page-tutorial" style="margin-top:64px;">
+        <div class="container page-section">
+            <h2 class="section-title">How to Use KRRC</h2>
+            <p class="section-subtitle">Step-by-step guide to using the Kashmir Research & Resource Center</p>
+            <div class="tutorial-layout">
+                <div class="tutorial-sidebar" id="tutorial-sidebar">
+                    <div class="tutorial-section-header">Frontend Guide</div>
+                    <div id="tutorial-list-frontend"></div>
+                    <div class="tutorial-section-header" id="tutorial-admin-header" style="display:none;">Admin Guide <span style="font-size:0.7rem;color:var(--accent);">(Members)</span></div>
+                    <div id="tutorial-list-admin" style="display:none;"></div>
+                </div>
+                <div class="tutorial-content" id="tutorial-content">
+                    <div style="text-align:center;padding:60px 20px;color:var(--text-muted);">
+                        <i class="fas fa-book-open" style="font-size:3rem;color:var(--accent);margin-bottom:16px;display:block;"></i>
+                        <h3>Welcome to the KRRC Tutorial</h3>
+                        <p>Select a topic from the left to get started.</p>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -287,6 +367,7 @@
                 <button onclick="switchAdminTab('documents')"><i class="fas fa-file-pdf"></i> Documents</button>
                 <button onclick="switchAdminTab('users')"><i class="fas fa-users"></i> Users</button>
                 <button onclick="switchAdminTab('categories')"><i class="fas fa-tags"></i> Categories</button>
+                <button onclick="switchAdminTab('tutorials')"><i class="fas fa-graduation-cap"></i> Tutorials</button>
                 <button onclick="switchAdminTab('seo')"><i class="fas fa-search"></i> SEO / Keywords</button>
                 <button onclick="switchAdminTab('analytics')"><i class="fas fa-chart-line"></i> Analytics</button>
                 <button onclick="switchAdminTab('ftp')"><i class="fas fa-server"></i> FTP Import</button>

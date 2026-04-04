@@ -82,6 +82,7 @@ function showPage(page) {
 
     if (page === 'home') loadHomePage();
     if (page === 'browse') loadBrowseOverview();
+    if (page === 'tutorial') loadTutorialPage();
     if (page === 'admin') loadAdminDashboard();
 
     document.getElementById('main-footer').style.display = page === 'admin' ? 'none' : '';
@@ -440,6 +441,7 @@ function switchAdminTab(tab) {
     else if (tab === 'documents') loadAdminDocuments();
     else if (tab === 'users') loadAdminUsers();
     else if (tab === 'categories') loadAdminCategories();
+    else if (tab === 'tutorials') loadAdminTutorials();
     else if (tab === 'seo') loadAdminSEO();
     else if (tab === 'analytics') loadAdminAnalytics();
     else if (tab === 'ftp') loadFtpImport();
@@ -861,6 +863,227 @@ let _analyticsDays = 30;
 async function loadAnalyticsPeriod(days) {
     _analyticsDays = days;
     loadAdminAnalytics();
+}
+
+// ===== ADMIN TUTORIALS =====
+async function loadAdminTutorials() {
+    const content = document.getElementById('admin-content');
+    content.innerHTML = '<div style="text-align:center;padding:40px;"><div class="spinner"></div></div>';
+    try {
+        const tutorials = await apiFetch('/api/admin/tutorials');
+        const frontend = tutorials.filter(t => t.section === 'frontend');
+        const admin = tutorials.filter(t => t.section === 'admin');
+        content.innerHTML = `
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+                <h2 style="font-family:var(--font-serif);flex:1;margin:0;">Tutorials (${tutorials.length})</h2>
+                <button class="btn btn-accent" onclick="showTutorialForm()"><i class="fas fa-plus"></i> Add Tutorial Step</button>
+            </div>
+
+            <div id="tutorial-form-panel" class="hidden" style="background:var(--card-bg);border-radius:8px;padding:20px;margin-bottom:24px;border:1px solid var(--accent);">
+                <h3 id="tutorial-form-title">Add Tutorial Step</h3>
+                <input type="hidden" id="edit-tutorial-id" value="">
+                <div style="display:grid;gap:12px;margin-top:12px;">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                        <div><label style="font-size:0.85rem;color:var(--text-secondary);">Title</label>
+                            <input type="text" id="tut-title" placeholder="e.g., How to Search the Archive"></div>
+                        <div><label style="font-size:0.85rem;color:var(--text-secondary);">Section</label>
+                            <select id="tut-section">
+                                <option value="frontend">Frontend (Public)</option>
+                                <option value="admin">Admin (Members Only)</option>
+                            </select></div>
+                    </div>
+                    <div><label style="font-size:0.85rem;color:var(--text-secondary);">Short Description</label>
+                        <input type="text" id="tut-description" placeholder="Brief description of this step"></div>
+                    <div><label style="font-size:0.85rem;color:var(--text-secondary);">Screenshot</label>
+                        <input type="file" id="tut-screenshot" accept="image/*"></div>
+                    <div><label style="font-size:0.85rem;color:var(--text-secondary);">Content (Detailed Explanation)</label>
+                        <textarea id="tut-content" rows="6" placeholder="Write a detailed step-by-step explanation. Use plain text."></textarea></div>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <label style="font-size:0.85rem;color:var(--text-secondary);">Sort Order:</label>
+                        <input type="number" id="tut-order" value="0" style="width:80px;" min="0">
+                    </div>
+                    <div style="display:flex;gap:8px;">
+                        <button class="btn btn-accent" onclick="saveTutorial()"><i class="fas fa-save"></i> Save</button>
+                        <button class="btn btn-sm" onclick="document.getElementById('tutorial-form-panel').classList.add('hidden')"><i class="fas fa-times"></i> Cancel</button>
+                    </div>
+                </div>
+            </div>
+
+            ${frontend.length > 0 ? `<h3 style="margin-bottom:12px;color:var(--accent);"><i class="fas fa-desktop"></i> Frontend Guide (${frontend.length})</h3>
+            <div style="display:grid;gap:8px;margin-bottom:24px;">${frontend.map(t => renderAdminTutorialCard(t)).join('')}</div>` : ''}
+
+            ${admin.length > 0 ? `<h3 style="margin-bottom:12px;color:var(--accent);"><i class="fas fa-lock"></i> Admin Guide (${admin.length})</h3>
+            <div style="display:grid;gap:8px;">${admin.map(t => renderAdminTutorialCard(t)).join('')}</div>` : ''}
+
+            ${tutorials.length === 0 ? '<div style="text-align:center;padding:40px;color:var(--text-muted);"><i class="fas fa-graduation-cap" style="font-size:2rem;margin-bottom:12px;display:block;"></i>No tutorials yet. Click "Add Tutorial Step" to create one.</div>' : ''}
+        `;
+    } catch (err) { content.innerHTML = '<div style="color:#ff4757;">Error: ' + escapeHtml(err.message) + '</div>'; }
+}
+
+function renderAdminTutorialCard(t) {
+    return `<div style="background:var(--bg-secondary);border-radius:8px;padding:12px 16px;display:flex;align-items:center;gap:12px;">
+        <span style="background:var(--accent);color:var(--bg-primary);width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.8rem;flex-shrink:0;">${t.sort_order}</span>
+        ${t.screenshot_path ? `<img src="${t.screenshot_path}" style="width:60px;height:40px;border-radius:4px;object-fit:cover;flex-shrink:0;">` : '<div style="width:60px;height:40px;border-radius:4px;background:var(--card-bg);display:flex;align-items:center;justify-content:center;flex-shrink:0;"><i class="fas fa-image" style="color:var(--text-muted);"></i></div>'}
+        <div style="flex:1;min-width:0;">
+            <div style="font-weight:600;">${escapeHtml(t.title)}</div>
+            <div style="font-size:0.8rem;color:var(--text-muted);">${escapeHtml(t.description || '')}</div>
+        </div>
+        <span class="badge ${t.is_published ? 'badge-approved' : 'badge-pending'}">${t.is_published ? 'Published' : 'Draft'}</span>
+        <button class="btn btn-sm" onclick="editTutorial('${t.id}')" title="Edit"><i class="fas fa-edit"></i></button>
+        <button class="btn btn-sm" style="background:#ff4757;color:#fff;" onclick="deleteTutorial('${t.id}')" title="Delete"><i class="fas fa-trash"></i></button>
+    </div>`;
+}
+
+function showTutorialForm(editing) {
+    document.getElementById('tutorial-form-panel').classList.remove('hidden');
+    document.getElementById('tutorial-form-title').textContent = editing ? 'Edit Tutorial Step' : 'Add Tutorial Step';
+    if (!editing) {
+        document.getElementById('edit-tutorial-id').value = '';
+        document.getElementById('tut-title').value = '';
+        document.getElementById('tut-description').value = '';
+        document.getElementById('tut-content').value = '';
+        document.getElementById('tut-section').value = 'frontend';
+        document.getElementById('tut-order').value = '0';
+        document.getElementById('tut-screenshot').value = '';
+    }
+}
+
+async function editTutorial(id) {
+    try {
+        const tutorials = await apiFetch('/api/admin/tutorials');
+        const t = tutorials.find(x => x.id === id);
+        if (!t) return;
+        document.getElementById('edit-tutorial-id').value = t.id;
+        document.getElementById('tut-title').value = t.title;
+        document.getElementById('tut-description').value = t.description || '';
+        document.getElementById('tut-content').value = t.content || '';
+        document.getElementById('tut-section').value = t.section;
+        document.getElementById('tut-order').value = t.sort_order;
+        showTutorialForm(true);
+    } catch (err) { showToast(err.message, 'error'); }
+}
+
+async function saveTutorial() {
+    const id = document.getElementById('edit-tutorial-id').value;
+    const formData = new FormData();
+    formData.append('title', document.getElementById('tut-title').value);
+    formData.append('description', document.getElementById('tut-description').value);
+    formData.append('content', document.getElementById('tut-content').value);
+    formData.append('section', document.getElementById('tut-section').value);
+    formData.append('sort_order', document.getElementById('tut-order').value);
+    const file = document.getElementById('tut-screenshot').files[0];
+    if (file) formData.append('screenshot', file);
+
+    try {
+        const url = id ? API + '/api/admin/tutorials/' + id : API + '/api/admin/tutorials';
+        const method = id ? 'PUT' : 'POST';
+        const resp = await fetch(url, { method, headers: { 'Authorization': 'Bearer ' + token }, body: formData });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || 'Failed');
+        showToast(id ? 'Tutorial updated' : 'Tutorial added');
+        document.getElementById('tutorial-form-panel').classList.add('hidden');
+        loadAdminTutorials();
+    } catch (err) { showToast(err.message, 'error'); }
+}
+
+async function deleteTutorial(id) {
+    if (!confirm('Delete this tutorial step?')) return;
+    try {
+        await apiFetch('/api/admin/tutorials/' + id, { method: 'DELETE' });
+        showToast('Tutorial deleted');
+        loadAdminTutorials();
+    } catch (err) { showToast(err.message, 'error'); }
+}
+
+// ===== FRONTEND TUTORIAL PAGE =====
+let tutorialData = [];
+let currentTutorial = null;
+
+async function loadTutorialPage() {
+    try {
+        const tutorials = await fetch(API + '/api/tutorials').then(r => r.json());
+        tutorialData = tutorials;
+        const frontend = tutorials.filter(t => t.section === 'frontend');
+        const admin = tutorials.filter(t => t.section === 'admin');
+
+        // Build sidebar
+        const frontendList = document.getElementById('tutorial-list-frontend');
+        frontendList.innerHTML = frontend.map((t, i) => `
+            <div class="tutorial-item" data-id="${t.id}" onclick="showTutorialStep('${t.id}')">
+                <span class="tutorial-num">${i + 1}</span>
+                <span>${escapeHtml(t.title)}</span>
+            </div>
+        `).join('') || '<div style="padding:10px;color:var(--text-muted);font-size:0.85rem;">No frontend tutorials yet.</div>';
+
+        // Admin tutorials - show only if logged in
+        const adminHeader = document.getElementById('tutorial-admin-header');
+        const adminList = document.getElementById('tutorial-list-admin');
+        if (admin.length > 0 && user) {
+            adminHeader.style.display = '';
+            adminList.style.display = '';
+            adminList.innerHTML = admin.map((t, i) => `
+                <div class="tutorial-item" data-id="${t.id}" onclick="showTutorialStep('${t.id}')">
+                    <span class="tutorial-num">${i + 1}</span>
+                    <span>${escapeHtml(t.title)}</span>
+                </div>
+            `).join('');
+        } else if (admin.length > 0) {
+            adminHeader.style.display = '';
+            adminList.style.display = '';
+            adminList.innerHTML = '<div style="padding:10px;color:var(--text-muted);font-size:0.85rem;"><i class="fas fa-lock"></i> Login to view admin tutorials.</div>';
+        } else {
+            adminHeader.style.display = 'none';
+            adminList.style.display = 'none';
+        }
+
+        // Auto-show first tutorial
+        if (frontend.length > 0 && !currentTutorial) {
+            showTutorialStep(frontend[0].id);
+        }
+    } catch (e) { console.error('Tutorial load error:', e); }
+}
+
+async function showTutorialStep(id) {
+    const t = tutorialData.find(x => x.id === id);
+    if (!t) return;
+
+    // Check admin access
+    if (t.section === 'admin' && !user) {
+        document.getElementById('tutorial-content').innerHTML = `
+            <div style="text-align:center;padding:60px 20px;">
+                <i class="fas fa-lock" style="font-size:3rem;color:var(--accent);margin-bottom:16px;display:block;"></i>
+                <h3>Members Only</h3>
+                <p style="color:var(--text-secondary);">Please login to view admin tutorials.</p>
+                <button class="btn btn-accent" onclick="showLoginModal()" style="margin-top:16px;">Login</button>
+            </div>`;
+        return;
+    }
+
+    currentTutorial = id;
+
+    // Highlight active sidebar item
+    document.querySelectorAll('.tutorial-item').forEach(el => el.classList.remove('active'));
+    const activeItem = document.querySelector(`.tutorial-item[data-id="${id}"]`);
+    if (activeItem) activeItem.classList.add('active');
+
+    // Find prev/next
+    const sectionTutorials = tutorialData.filter(x => x.section === t.section);
+    const idx = sectionTutorials.findIndex(x => x.id === id);
+    const prev = idx > 0 ? sectionTutorials[idx - 1] : null;
+    const next = idx < sectionTutorials.length - 1 ? sectionTutorials[idx + 1] : null;
+
+    const contentEl = document.getElementById('tutorial-content');
+    contentEl.innerHTML = `
+        <h2>${escapeHtml(t.title)}</h2>
+        ${t.description ? `<p style="color:var(--text-secondary);margin-bottom:16px;">${escapeHtml(t.description)}</p>` : ''}
+        ${t.screenshot_path ? `<img src="${t.screenshot_path}" alt="${escapeHtml(t.title)}">` : ''}
+        <div class="tutorial-step-text">${escapeHtml(t.content || '').replace(/\n/g, '<br>')}</div>
+        <div class="tutorial-nav">
+            ${prev ? `<button class="btn btn-sm" onclick="showTutorialStep('${prev.id}')"><i class="fas fa-arrow-left"></i> ${escapeHtml(prev.title)}</button>` : '<div></div>'}
+            ${next ? `<button class="btn btn-sm btn-accent" onclick="showTutorialStep('${next.id}')">${escapeHtml(next.title)} <i class="fas fa-arrow-right"></i></button>` : '<div></div>'}
+        </div>
+    `;
+    contentEl.scrollTo(0, 0);
 }
 
 // ===== FTP IMPORT =====

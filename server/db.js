@@ -104,6 +104,19 @@ db.exec(`
     value TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS tutorials (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    description TEXT,
+    screenshot_path TEXT,
+    content TEXT,
+    section TEXT DEFAULT 'frontend',
+    sort_order INTEGER DEFAULT 0,
+    is_published INTEGER DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
   CREATE TABLE IF NOT EXISTS seo_keywords (
     id TEXT PRIMARY KEY,
     keyword TEXT NOT NULL,
