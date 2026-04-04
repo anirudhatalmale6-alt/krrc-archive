@@ -758,6 +758,17 @@ app.delete(BASE + '/api/admin/categories/:id', authenticateToken, requireAdmin, 
 // ===== AI CHATBOT =====
 app.post(BASE + '/api/chat', chatLimiter, async (req, res) => {
   if (!AI_API_KEY) return res.status(500).json({ error: 'AI not configured' });
+  // Check access control
+  const chatAccess = db.prepare("SELECT value FROM access_settings WHERE key = 'chatbot_access'").get();
+  if (chatAccess && chatAccess.value === 'members') {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ error: 'Login required to use KRRC Ai' });
+    try {
+      const decoded = jwt.verify(authHeader.split(' ')[1], JWT_SECRET);
+      const user = db.prepare('SELECT id FROM users WHERE id = ? AND is_approved = 1').get(decoded.userId);
+      if (!user) return res.status(401).json({ error: 'Login required to use KRRC Ai' });
+    } catch (e) { return res.status(401).json({ error: 'Login required to use KRRC Ai' }); }
+  }
   const { message, sessionId } = req.body;
   if (!message) return res.status(400).json({ error: 'Message required' });
 
@@ -1267,6 +1278,34 @@ Allow: /krrc/
 Disallow: /krrc/api/
 Disallow: /krrc/uploads/
 Sitemap: https://skylarkmedia.se/krrc/sitemap.xml`);
+});
+
+// ===== ACCESS CONTROL =====
+// Public: get access settings (so frontend knows what to gate)
+app.get(BASE + '/api/access-settings', (req, res) => {
+  const settings = db.prepare('SELECT key, value FROM access_settings').all();
+  const result = {};
+  settings.forEach(s => { result[s.key] = s.value; });
+  res.json(result);
+});
+
+// Admin: get all access settings with labels
+app.get(BASE + '/api/admin/access-settings', authenticateToken, requireAdmin, (req, res) => {
+  const settings = db.prepare('SELECT * FROM access_settings ORDER BY rowid').all();
+  res.json(settings);
+});
+
+// Admin: update access settings
+app.post(BASE + '/api/admin/access-settings', authenticateToken, requireAdmin, (req, res) => {
+  const { settings } = req.body;
+  if (!settings || typeof settings !== 'object') return res.status(400).json({ error: 'Settings object required' });
+  const update = db.prepare('UPDATE access_settings SET value = ? WHERE key = ?');
+  Object.entries(settings).forEach(([key, value]) => {
+    if (['public', 'members'].includes(value)) {
+      update.run(value, key);
+    }
+  });
+  res.json({ success: true });
 });
 
 // SPA routes

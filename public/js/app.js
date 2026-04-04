@@ -81,10 +81,22 @@ function showPage(page) {
     trackPageView(page);
 
     if (page === 'home') loadHomePage();
-    if (page === 'browse') loadBrowseOverview();
-    if (page === 'tutorial') loadTutorialPage();
-    if (page === 'policy') loadPolicyPage();
-    if (page === 'admin') loadAdminDashboard();
+    else if (page === 'browse') {
+        if (!checkAccess('browse')) { document.getElementById('page-browse').querySelector('.container').innerHTML = showAccessGate('the Archive'); return; }
+        loadBrowseOverview();
+    }
+    else if (page === 'tutorial') {
+        if (!checkAccess('tutorial')) { document.getElementById('page-tutorial').querySelector('.container').innerHTML = showAccessGate('Tutorials'); return; }
+        loadTutorialPage();
+    }
+    else if (page === 'policy') {
+        if (!checkAccess('policy')) { document.getElementById('page-policy').querySelector('.container').innerHTML = showAccessGate('Policies'); return; }
+        loadPolicyPage();
+    }
+    else if (page === 'upload') {
+        if (!checkAccess('upload')) { document.getElementById('page-upload').querySelector('.container').innerHTML = showAccessGate('Upload'); return; }
+    }
+    else if (page === 'admin') loadAdminDashboard();
 
     document.getElementById('main-footer').style.display = page === 'admin' ? 'none' : '';
 }
@@ -191,6 +203,11 @@ function heroSearch() {
 }
 
 function openChatbot() {
+    if (!checkAccess('chatbot')) {
+        showToast('Login required to use KRRC Ai', 'error');
+        showLoginModal();
+        return;
+    }
     const panel = document.getElementById('chatbot-panel');
     if (!panel.classList.contains('open')) panel.classList.add('open');
 }
@@ -409,6 +426,11 @@ function toggleChat() {
 }
 
 async function sendChat() {
+    if (!checkAccess('chatbot')) {
+        showToast('Login required to use KRRC Ai', 'error');
+        showLoginModal();
+        return;
+    }
     const input = document.getElementById('chat-input');
     const msg = input.value.trim();
     if (!msg) return;
@@ -444,6 +466,7 @@ function switchAdminTab(tab) {
     else if (tab === 'categories') loadAdminCategories();
     else if (tab === 'perspectives') loadAdminPerspectives();
     else if (tab === 'policies') loadAdminPolicies();
+    else if (tab === 'access') loadAdminAccessControl();
     else if (tab === 'tutorials') loadAdminTutorials();
     else if (tab === 'seo') loadAdminSEO();
     else if (tab === 'analytics') loadAdminAnalytics();
@@ -1467,8 +1490,97 @@ async function deletePolicy(id) {
     } catch (err) { showToast(err.message, 'error'); }
 }
 
+// ===== ACCESS CONTROL ADMIN =====
+async function loadAdminAccessControl() {
+    const content = document.getElementById('admin-content');
+    content.innerHTML = '<div style="text-align:center;padding:40px;"><div class="spinner"></div></div>';
+    try {
+        const settings = await apiFetch('/api/admin/access-settings');
+        content.innerHTML = `
+            <h2 style="font-family:var(--font-serif);margin-bottom:8px;">Access Control</h2>
+            <p style="color:var(--text-secondary);margin-bottom:24px;font-size:0.9rem;">Control which features are public or require membership (login + admin approval). Changes take effect immediately.</p>
+            <div style="display:grid;gap:16px;" id="access-toggles">
+                ${settings.map(s => `
+                    <div style="background:var(--bg-secondary);border-radius:8px;padding:16px 20px;display:flex;align-items:center;gap:16px;">
+                        <div style="flex:1;">
+                            <div style="font-weight:600;">${escapeHtml(s.label)}</div>
+                            <div style="font-size:0.8rem;color:var(--text-muted);">${escapeHtml(s.description || '')}</div>
+                        </div>
+                        <div style="display:flex;gap:4px;background:var(--bg-primary);border-radius:20px;padding:3px;">
+                            <button class="btn btn-sm ${s.value === 'public' ? 'btn-accent' : ''}" onclick="setAccess('${s.key}', 'public', this)" style="border-radius:16px;padding:6px 16px;font-size:0.8rem;">
+                                <i class="fas fa-globe"></i> Public
+                            </button>
+                            <button class="btn btn-sm ${s.value === 'members' ? 'btn-accent' : ''}" onclick="setAccess('${s.key}', 'members', this)" style="border-radius:16px;padding:6px 16px;font-size:0.8rem;">
+                                <i class="fas fa-lock"></i> Members
+                            </button>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+            <div style="margin-top:24px;padding:16px;background:rgba(201,169,110,0.05);border:1px solid var(--border);border-radius:8px;">
+                <h4 style="margin-bottom:8px;"><i class="fas fa-info-circle" style="color:var(--accent);"></i> How it works</h4>
+                <ul style="font-size:0.85rem;color:var(--text-secondary);line-height:1.8;list-style:disc;padding-left:20px;">
+                    <li><strong>Public</strong> - Anyone can access this feature without logging in</li>
+                    <li><strong>Members</strong> - Only registered and approved users can access. Others see a login/register prompt</li>
+                    <li>The Home page and About page are always public</li>
+                    <li>Admin panel always requires admin login regardless of these settings</li>
+                </ul>
+            </div>
+        `;
+    } catch (err) { content.innerHTML = '<div style="color:#ff4757;">Error: ' + escapeHtml(err.message) + '</div>'; }
+}
+
+async function setAccess(key, value, btn) {
+    try {
+        await apiFetch('/api/admin/access-settings', {
+            method: 'POST',
+            body: JSON.stringify({ settings: { [key]: value } })
+        });
+        // Update button states visually
+        const parent = btn.parentElement;
+        parent.querySelectorAll('button').forEach(b => b.classList.remove('btn-accent'));
+        btn.classList.add('btn-accent');
+        // Refresh cached access settings
+        await loadAccessSettings();
+        showToast(key.replace(/_/g, ' ') + ' set to ' + value);
+    } catch (err) { showToast(err.message, 'error'); }
+}
+
+// ===== FRONTEND ACCESS GATING =====
+let accessSettings = {};
+
+async function loadAccessSettings() {
+    try {
+        accessSettings = await fetch(API + '/api/access-settings').then(r => r.json());
+    } catch (e) { accessSettings = {}; }
+}
+
+function checkAccess(feature) {
+    const key = feature + '_access';
+    if (accessSettings[key] === 'members' && !user) {
+        return false;
+    }
+    return true;
+}
+
+function showAccessGate(featureName) {
+    const content = `
+        <div style="text-align:center;padding:80px 20px;max-width:500px;margin:0 auto;">
+            <i class="fas fa-lock" style="font-size:3rem;color:var(--accent);margin-bottom:20px;display:block;"></i>
+            <h2 style="font-family:var(--font-serif);margin-bottom:12px;">Members Only</h2>
+            <p style="color:var(--text-secondary);margin-bottom:24px;">This feature is available to registered members. Login or create an account to access ${featureName}.</p>
+            <div style="display:flex;gap:12px;justify-content:center;">
+                <button class="btn btn-accent" onclick="showLoginModal()" style="padding:12px 28px;"><i class="fas fa-sign-in-alt"></i> Login</button>
+                <button class="btn btn-primary" onclick="showRegisterModal()" style="padding:12px 28px;"><i class="fas fa-user-plus"></i> Register</button>
+            </div>
+            <p style="font-size:0.8rem;color:var(--text-muted);margin-top:16px;">Registration requires admin approval.</p>
+        </div>`;
+    return content;
+}
+
 // ===== INIT =====
 async function init() {
+    await loadAccessSettings();
     updateAuthUI();
     loadHomePage();
 

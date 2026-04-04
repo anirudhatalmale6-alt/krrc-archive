@@ -176,6 +176,13 @@ db.exec(`
     last_visit DATETIME DEFAULT CURRENT_TIMESTAMP,
     page_count INTEGER DEFAULT 0
   );
+
+  CREATE TABLE IF NOT EXISTS access_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    label TEXT,
+    description TEXT
+  );
 `);
 
 // Create FTS5 virtual table for full-text search
@@ -227,6 +234,22 @@ if (perspCount.cnt === 0) {
   ];
   persps.forEach(([name, slug, desc, color, order]) => insertPersp.run(uuid(), name, slug, desc, color, order));
   console.log('Seeded 4 default perspectives');
+}
+
+// Seed default access settings
+const accessCount = db.prepare('SELECT COUNT(*) as cnt FROM access_settings').get();
+if (accessCount.cnt === 0) {
+  const insertAccess = db.prepare('INSERT INTO access_settings (key, value, label, description) VALUES (?, ?, ?, ?)');
+  const settings = [
+    ['chatbot_access', 'public', 'Chatbot (KRRC Ai)', 'Control who can use the AI chatbot'],
+    ['browse_access', 'public', 'Browse Page', 'Control who can view the archive overview'],
+    ['upload_access', 'public', 'Upload Page', 'Control who can upload documents'],
+    ['policy_access', 'public', 'Policy Page', 'Control who can view policies and perspectives'],
+    ['tutorial_access', 'public', 'Tutorial Page', 'Control who can view tutorials'],
+    ['document_detail_access', 'public', 'Document Details', 'Control who can view individual document pages'],
+  ];
+  settings.forEach(([key, value, label, desc]) => insertAccess.run(key, value, label, desc));
+  console.log('Seeded 6 default access settings (all public)');
 }
 
 module.exports = db;
