@@ -89,10 +89,6 @@ function showPage(page) {
         if (!checkAccess('tutorial')) { document.getElementById('page-tutorial').querySelector('.container').innerHTML = showAccessGate('Tutorials'); return; }
         loadTutorialPage();
     }
-    else if (page === 'policy') {
-        if (!checkAccess('policy')) { document.getElementById('page-policy').querySelector('.container').innerHTML = showAccessGate('Policies'); return; }
-        loadPolicyPage();
-    }
     else if (page === 'upload') {
         if (!checkAccess('upload')) { document.getElementById('page-upload').querySelector('.container').innerHTML = showAccessGate('Upload'); return; }
     }
@@ -1428,7 +1424,17 @@ async function loadAdminPolicies() {
                 ${policies.length === 0 ? '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted);">No policies yet. Add your aims, objectives, and policies.</td></tr>' : ''}
                 </tbody>
             </table>
+
+            <div style="margin-top:24px;">
+                <button class="btn btn-accent" onclick="document.getElementById('policy-preview').classList.toggle('hidden')"><i class="fas fa-eye"></i> Toggle Preview</button>
+            </div>
+            <div id="policy-preview" class="hidden" style="margin-top:16px;background:var(--bg-secondary);border-radius:8px;padding:24px;border:1px solid var(--accent);">
+                <h3 style="font-family:var(--font-serif);margin-bottom:16px;color:var(--accent);">Policy Preview</h3>
+                <div id="policy-preview-content"></div>
+            </div>
         `;
+        // Render preview content
+        renderPolicyPreview(policies, persps);
     } catch (err) { content.innerHTML = '<div style="color:#ff4757;">Error: ' + escapeHtml(err.message) + '</div>'; }
 }
 
@@ -1488,6 +1494,32 @@ async function deletePolicy(id) {
         showToast('Policy deleted');
         loadAdminPolicies();
     } catch (err) { showToast(err.message, 'error'); }
+}
+
+function renderPolicyPreview(policies, persps) {
+    const sections = ['aims', 'objectives', 'general'];
+    const sectionLabels = { aims: 'Aims', objectives: 'Objectives', general: 'General Policy' };
+    let html = '';
+    persps.forEach(p => {
+        const perspPolicies = policies.filter(pol => pol.perspective_id === p.id && pol.is_published);
+        if (perspPolicies.length === 0) return;
+        html += `<div style="border-left:4px solid ${p.color};padding-left:20px;margin-bottom:24px;">
+            <h4 style="color:${p.color};font-family:var(--font-serif);font-size:1.1rem;margin-bottom:8px;">${escapeHtml(p.name)}</h4>`;
+        sections.forEach(sec => {
+            const secPolicies = perspPolicies.filter(pol => pol.section === sec);
+            if (secPolicies.length === 0) return;
+            html += `<h5 style="color:var(--text-primary);margin:8px 0 6px;font-size:0.9rem;">${sectionLabels[sec]}</h5>`;
+            secPolicies.forEach(pol => {
+                html += `<div style="background:var(--bg-primary);border-radius:6px;padding:12px;margin-bottom:6px;">
+                    <strong style="color:var(--accent);font-size:0.9rem;">${escapeHtml(pol.title)}</strong>
+                    ${pol.content ? `<div style="color:var(--text-secondary);font-size:0.85rem;line-height:1.6;margin-top:4px;">${escapeHtml(pol.content).replace(/\n/g, '<br>')}</div>` : ''}
+                </div>`;
+            });
+        });
+        html += '</div>';
+    });
+    const el = document.getElementById('policy-preview-content');
+    if (el) el.innerHTML = html || '<p style="color:var(--text-muted);">No published policies yet.</p>';
 }
 
 // ===== ACCESS CONTROL ADMIN =====
