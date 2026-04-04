@@ -524,6 +524,7 @@ async function loadAdminDocuments() {
                         ${isAdmin && !d.is_approved ? `<button class="btn btn-sm btn-primary" onclick="approveDoc('${d.id}')" title="Approve"><i class="fas fa-check"></i></button>` : ''}
                         <button class="btn btn-sm" onclick="recategoriseDoc('${d.id}')" title="AI Re-categorise"><i class="fas fa-robot"></i></button>
                         <button class="btn btn-sm" onclick="editDocMeta('${d.id}')" title="Edit"><i class="fas fa-edit"></i></button>
+                        ${isAdmin ? `<button class="btn btn-sm" style="background:#4A90D9;color:#fff;" onclick="downloadDoc('${d.id}')" title="Download"><i class="fas fa-download"></i></button>` : ''}
                         ${isAdmin ? `<button class="btn btn-sm btn-danger" onclick="deleteDoc('${d.id}')" title="Delete"><i class="fas fa-trash"></i></button>` :
                         `<button class="btn btn-sm" style="background:#ff9f43;color:#fff;" onclick="requestDeleteDoc('${d.id}')" title="Request Deletion"><i class="fas fa-flag"></i></button>`}
                     </td>
@@ -563,6 +564,11 @@ async function deleteDoc(id) {
         showToast('Document deleted');
         loadAdminDocuments();
     } catch (err) { showToast(err.message, 'error'); }
+}
+
+function downloadDoc(id) {
+    // Open download in new tab with token as query param
+    window.open(API + '/api/admin/documents/' + id + '/download?token=' + encodeURIComponent(token), '_blank');
 }
 
 async function requestDeleteDoc(id) {

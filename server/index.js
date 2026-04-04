@@ -41,6 +41,25 @@ app.use(BASE + '/uploads', (req, res) => {
   res.status(403).json({ error: 'Direct file access is not permitted. Use the KRRC Ai chatbot to explore the archive.' });
 });
 
+// Admin-only document download
+app.get(BASE + '/api/admin/documents/:id/download', (req, res) => {
+  // Verify admin token
+  const auth = req.headers['authorization'] || req.query.token;
+  if (!auth) return res.status(401).json({ error: 'Authentication required' });
+  try {
+    const tokenStr = auth.startsWith('Bearer ') ? auth.split(' ')[1] : auth;
+    const decoded = jwt.verify(tokenStr, JWT_SECRET);
+    if (decoded.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  } catch (e) { return res.status(401).json({ error: 'Invalid token' }); }
+
+  const doc = db.prepare('SELECT filename, original_name, title FROM documents WHERE id = ?').get(req.params.id);
+  if (!doc) return res.status(404).json({ error: 'Document not found' });
+  const filePath = path.join(uploadsDir, doc.filename);
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found on disk' });
+  const downloadName = doc.original_name || doc.filename;
+  res.download(filePath, downloadName);
+});
+
 // Static files
 app.use(BASE, express.static(path.join(__dirname, '../public')));
 
